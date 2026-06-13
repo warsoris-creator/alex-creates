@@ -1,19 +1,29 @@
 import type { Metadata } from "next";
-import { Almarai, Cormorant_Garamond } from "next/font/google";
+import { Manrope, Playfair_Display, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-const almarai = Almarai({
-  subsets: ["latin", "arabic"],
-  weight: ["300", "400", "700", "800"],
+// Body / UI — modern geometric grotesk (Latin + Cyrillic).
+const manrope = Manrope({
+  subsets: ["latin", "cyrillic"],
+  weight: ["300", "400", "500", "600", "700", "800"],
   variable: "--font-sans",
   display: "swap",
 });
 
-const cormorant = Cormorant_Garamond({
+// Display + italic accent — high-contrast cinematic serif (Latin + Cyrillic).
+const playfair = Playfair_Display({
   subsets: ["latin", "cyrillic"],
-  weight: ["500", "600", "700"],
-  style: ["italic"],
+  weight: ["400", "500", "600", "700"],
+  style: ["normal", "italic"],
   variable: "--font-accent",
+  display: "swap",
+});
+
+// Eyebrows, labels, numerals — editorial monospace (Latin + Cyrillic).
+const jetbrains = JetBrains_Mono({
+  subsets: ["latin", "cyrillic"],
+  weight: ["400", "500", "600"],
+  variable: "--font-mono",
   display: "swap",
 });
 
@@ -24,7 +34,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${almarai.variable} ${cormorant.variable}`}>
+    <html lang="en" className={`${manrope.variable} ${playfair.variable} ${jetbrains.variable}`}>
       <body>{children}</body>
     </html>
   );

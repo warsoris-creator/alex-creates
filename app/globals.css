@@ -1,14 +1,15 @@
 @import "tailwindcss";
 
 :root {
-  --black: #030303;
+  --black: #070605;
   --cream: #e1e0cc;
   --cream-soft: #dedbc8;
   --muted: rgba(225, 224, 204, 0.66);
-  --charcoal: #101010;
-  --charcoal-2: #212121;
-  --line: rgba(225, 224, 204, 0.13);
+  --charcoal: #121110;
+  --charcoal-2: #211f1d;
+  --line: rgba(225, 224, 204, 0.12);
   --warm: #d89b57;
+  --warm-deep: #a85f2b;
 }
 
 * { box-sizing: border-box; }
@@ -17,22 +18,35 @@ body {
   margin: 0;
   color: var(--cream);
   background:
-    radial-gradient(circle at 70% 10%, rgba(205, 135, 66, 0.12), transparent 34rem),
-    radial-gradient(circle at 15% 45%, rgba(225, 224, 204, 0.06), transparent 26rem),
+    radial-gradient(120% 80% at 78% -12%, rgba(216, 155, 87, 0.16), transparent 55%),
+    radial-gradient(90% 70% at 8% 48%, rgba(225, 224, 204, 0.05), transparent 55%),
+    linear-gradient(180deg, transparent 58%, rgba(0, 0, 0, 0.55) 100%),
     var(--black);
-  font-family: var(--font-sans), Arial, sans-serif;
+  font-family: var(--font-sans), system-ui, Arial, sans-serif;
+  font-feature-settings: "ss01", "cv01";
+  -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
 }
+/* Film grain */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: 80;
-  opacity: .13;
+  opacity: .11;
   mix-blend-mode: screen;
   background-image:
     url("data:image/svg+xml,%3Csvg viewBox='0 0 260 260' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.52'/%3E%3C/svg%3E");
+}
+/* Cinematic vignette */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 79;
+  background: radial-gradient(130% 100% at 50% 42%, transparent 55%, rgba(0, 0, 0, 0.5) 100%);
 }
 ::selection { background: rgba(216,155,87,.35); color: #fffbe9; }
 button, input, textarea { font: inherit; }
@@ -40,7 +54,12 @@ button { cursor: pointer; }
 img, video { max-width: 100%; display: block; }
 a { text-decoration: none; }
 
-.accent { font-family: var(--font-accent), Georgia, serif; font-style: italic; font-weight: 600; letter-spacing: -0.05em; }
+/* Cinematic serif display — used on hero + section headlines and big numerals.
+   Only sets the family/style so the per-element Tailwind weight + tracking still win. */
+.display { font-family: var(--font-accent), Georgia, serif; font-style: normal; }
+.accent { font-family: var(--font-accent), Georgia, serif; font-style: italic; font-weight: 600; letter-spacing: -0.035em; }
+/* Editorial monospace — eyebrows, labels, version, data. */
+.mono { font-family: var(--font-mono), ui-monospace, monospace; }
 .container { width: min(100% - 28px, 1220px); margin-inline: auto; }
 .panel {
   background: linear-gradient(145deg, rgba(33,33,33,.78), rgba(9,9,9,.92));
