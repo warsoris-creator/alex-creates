@@ -122,7 +122,6 @@ export const defaultContent: SiteContent = {
     { id: "years", value: 8, suffix: "+", label: { en: "Years of Experience", ru: "Лет опыта" }, description: { en: "Working on creative projects across short-form, branded, and emerging media.", ru: "Креативные проекты: короткий формат, бренды и новые медиа." } },
     { id: "projects", value: 60, suffix: "+", label: { en: "Projects Completed", ru: "Завершённых проектов" }, description: { en: "From short films to commercials, music videos and experimental pieces.", ru: "От короткого метра до рекламы, клипов и экспериментов." } },
     { id: "collabs", value: 25, suffix: "+", label: { en: "Trusted Collaborators", ru: "Надёжных коллабораций" }, description: { en: "Directors, studios, and creative minds I’ve had the honor to work alongside.", ru: "Режиссёры, студии и авторы, с которыми было ценно работать." } },
-    { id: "countries", value: 12, suffix: "+", label: { en: "Countries", ru: "Стран" }, description: { en: "Projects that took me around the world and shaped my perspective.", ru: "Проекты по миру, сформировавшие мой взгляд." } },
   ],
   contact: {
     eyebrow: { en: "Inquiries", ru: "Заявки" },
@@ -132,5 +131,5 @@ export const defaultContent: SiteContent = {
   },
 };
 
-export const storageKey = "alex.creates.content.v1";
+export const storageKey = "alex.creates.content.v2";
 export const languageKey = "alex.creates.lang";
