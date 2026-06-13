@@ -1,7 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(git -c user.email=\"marlboropaskal@gmail.com\" -c user.name=\"warsoris-creator\" commit --allow-empty -m \"Trigger Pages deploy via GitHub Actions\")"
-    ]
-  }
-}
