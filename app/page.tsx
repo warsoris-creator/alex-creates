@@ -5,8 +5,6 @@ import { AnimatePresence, motion, useInView, useReducedMotion, useScroll, useTra
 import { ArrowUpRight, CircleArrowRight, Film, Pencil, Plus, Save, Trash2, X, Brain, Sparkles, Scissors, Box } from "lucide-react";
 import Lenis from "lenis";
 import NumberFlow from "@number-flow/react";
-import useEmblaCarousel from "embla-carousel-react";
-import Autoplay from "embla-carousel-autoplay";
 import { defaultContent, languageKey, Lang, SiteContent, storageKey, ToolCard, Collaborator } from "@/lib/content";
 
 const ease = [0.22, 1, 0.36, 1] as const;
@@ -169,10 +167,9 @@ function ToolCardView({ tool, lang, delay }: { tool: ToolCard; lang: Lang; delay
 
 function Collaborators({ content, lang }: { content: SiteContent; lang: Lang }) {
   const [selected, setSelected] = useState<Collaborator | null>(null);
-  const [emblaRef] = useEmblaCarousel({ loop: true, align: "start", dragFree: true }, [Autoplay({ delay: 3800, stopOnInteraction: false, stopOnMouseEnter: true })]);
   return <section id="collaborators" className="container py-24"><div className="panel rounded-[2.2rem] p-5 md:p-10 lg:p-16">
     <div className="grid gap-10 lg:grid-cols-[.75fr_1.25fr]"><Reveal><div className="lg:sticky lg:top-10"><p className="mb-5 mono text-[10px] font-medium uppercase tracking-[.3em] text-[#e1e0cc]/55">{t(content.collaboratorsIntro.eyebrow, lang)}</p><h2 className="display text-[clamp(2.5rem,5.8vw,5rem)] font-bold leading-[.92] tracking-[-.03em]"><span>{t(content.collaboratorsIntro.titlePrefix, lang)} </span><span className="accent block text-[1.08em]">{t(content.collaboratorsIntro.titleAccent, lang)}</span></h2><p className="mt-8 max-w-sm text-sm leading-7 text-[#e1e0cc]/55">{t(content.collaboratorsIntro.body, lang)}</p></div></Reveal>
-      <div className="overflow-hidden cursor-grab active:cursor-grabbing" ref={emblaRef}><div className="flex gap-3">{content.collaborators.map(person => <div key={person.id} className="min-w-0 flex-[0_0_82%] sm:flex-[0_0_48%] xl:flex-[0_0_32%]"><PersonCard person={person} lang={lang} onClick={() => setSelected(person)} /></div>)}</div></div></div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">{content.collaborators.map(person => <Reveal key={person.id}><PersonCard person={person} lang={lang} onClick={() => setSelected(person)} /></Reveal>)}</div></div>
   </div><PersonModal person={selected} lang={lang} onClose={() => setSelected(null)} /></section>;
 }
 function PersonCard({ person, lang, onClick }: { person: Collaborator; lang: Lang; onClick: () => void }) {

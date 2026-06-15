@@ -44,8 +44,8 @@ export const defaultContent: SiteContent = {
   },
   hero: {
     title: "alex.creates*",
-    media: "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=2400&auto=format&fit=crop",
-    poster: "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?q=80&w=2200&auto=format&fit=crop",
+    media: "/alex-creates/hero-cliff.png",
+    poster: "/alex-creates/hero-cliff.png",
     mediaType: "image",
     description: {
       en: "alex.creates is a worldwide network of visual artists, filmmakers, and storytellers bound not by place, status, or labels, but by passion and hunger to unlock potential through unique perspectives.",
@@ -131,5 +131,5 @@ export const defaultContent: SiteContent = {
   },
 };
 
-export const storageKey = "alex.creates.content.v2";
+export const storageKey = "alex.creates.content.v3";
 export const languageKey = "alex.creates.lang";
