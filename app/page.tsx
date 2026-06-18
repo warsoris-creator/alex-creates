@@ -108,49 +108,60 @@ function VideoOrImage({ src, poster, type = "video", className = "", auto = true
   return <video className={`h-full w-full object-cover ${className}`} src={src} poster={poster} autoPlay={auto} muted loop playsInline preload="metadata" />;
 }
 
-// Seamless looping video with a dissolve at the loop seam. Two stacked layers
-// crossfade into each other; the incoming layer starts OFFSET seconds in so the
-// static intro frame is never shown during the dissolve.
+// Seamless looping video with a dissolve at the loop seam. The incoming layer
+// is brought on top and faded 0->1 while the outgoing layer stays fully opaque
+// underneath — so the composite brightness never dips (a symmetric crossfade
+// where both layers go through 50% darkens against the background). The incoming
+// layer starts OFFSET seconds in so the static intro frame never shows mid-fade.
 const HERO_CROSSFADE = 1; // dissolve length, seconds
 const HERO_OFFSET = 1;    // skip this much of the start on every loop after the first
 function HeroVideo({ src, poster, className = "" }: { src: string; poster?: string; className?: string }) {
   const aRef = useRef<HTMLVideoElement | null>(null);
   const bRef = useRef<HTMLVideoElement | null>(null);
-  const [frontA, setFrontA] = useState(true);
   const reduce = useReducedMotion();
 
   useEffect(() => {
     const a = aRef.current, b = bRef.current;
     if (!a || !b) return;
+    a.style.opacity = "1"; a.style.zIndex = "1";
+    b.style.opacity = "0"; b.style.zIndex = "2";
     a.currentTime = 0;
     a.play().catch(() => {});
     if (reduce) return;
 
     let raf = 0;
     let fading = false;
-    let showA = true;
+    let activeIsA = true;
     const tick = () => {
       raf = requestAnimationFrame(tick);
-      const active = showA ? a : b;
-      const incoming = showA ? b : a;
+      const active = activeIsA ? a : b;
+      const incoming = activeIsA ? b : a;
       if (!active.duration || Number.isNaN(active.duration)) return;
       if (!fading && active.currentTime >= active.duration - HERO_CROSSFADE) {
         fading = true;
+        // Bring the incoming layer on top, snap it transparent (no animated
+        // fade-out of the old frame), prime it, then fade it in over the
+        // still-opaque outgoing layer.
+        incoming.style.zIndex = "2";
+        active.style.zIndex = "1";
+        incoming.style.transition = "none";
+        incoming.style.opacity = "0";
         incoming.currentTime = HERO_OFFSET;
         incoming.play().catch(() => {});
-        showA = !showA;
-        setFrontA(showA);
-        window.setTimeout(() => { active.pause(); fading = false; }, HERO_CROSSFADE * 1000);
+        void incoming.offsetWidth; // force reflow so the snap-to-0 applies before the fade
+        incoming.style.transition = `opacity ${HERO_CROSSFADE}s linear`;
+        incoming.style.opacity = "1";
+        window.setTimeout(() => { active.pause(); activeIsA = !activeIsA; fading = false; }, HERO_CROSSFADE * 1000);
       }
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [reduce]);
 
-  const base = "absolute inset-0 h-full w-full object-cover transition-opacity duration-1000 ease-linear";
+  const base = "absolute inset-0 h-full w-full object-cover";
   return <div className={`absolute inset-0 ${className}`}>
-    <video ref={aRef} src={src} poster={poster} muted playsInline preload="auto" className={`${base} ${frontA ? "opacity-100" : "opacity-0"}`} />
-    <video ref={bRef} src={src} poster={poster} muted playsInline preload="auto" className={`${base} ${frontA ? "opacity-0" : "opacity-100"}`} />
+    <video ref={aRef} src={src} poster={poster} muted playsInline preload="auto" className={base} />
+    <video ref={bRef} src={src} poster={poster} muted playsInline preload="auto" className={base} />
   </div>;
 }
 
