@@ -44,9 +44,9 @@ export const defaultContent: SiteContent = {
   },
   hero: {
     title: "alex.creates*",
-    media: "/alex-creates/hero-cliff.png",
+    media: "/alex-creates/hero.mp4",
     poster: "/alex-creates/hero-cliff.png",
-    mediaType: "image",
+    mediaType: "video",
     description: {
       en: "alex.creates is a worldwide network of visual artists, filmmakers, and storytellers bound not by place, status, or labels, but by passion and hunger to unlock potential through unique perspectives.",
       ru: "alex.creates — международная сеть визуальных художников, режиссёров и рассказчиков, объединённых не местом, статусом или ярлыками, а страстью и стремлением раскрывать потенциал через уникальный взгляд.",
@@ -131,5 +131,5 @@ export const defaultContent: SiteContent = {
   },
 };
 
-export const storageKey = "alex.creates.content.v3";
+export const storageKey = "alex.creates.content.v4";
 export const languageKey = "alex.creates.lang";

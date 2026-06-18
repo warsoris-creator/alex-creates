@@ -108,6 +108,52 @@ function VideoOrImage({ src, poster, type = "video", className = "", auto = true
   return <video className={`h-full w-full object-cover ${className}`} src={src} poster={poster} autoPlay={auto} muted loop playsInline preload="metadata" />;
 }
 
+// Seamless looping video with a dissolve at the loop seam. Two stacked layers
+// crossfade into each other; the incoming layer starts OFFSET seconds in so the
+// static intro frame is never shown during the dissolve.
+const HERO_CROSSFADE = 1; // dissolve length, seconds
+const HERO_OFFSET = 1;    // skip this much of the start on every loop after the first
+function HeroVideo({ src, poster, className = "" }: { src: string; poster?: string; className?: string }) {
+  const aRef = useRef<HTMLVideoElement | null>(null);
+  const bRef = useRef<HTMLVideoElement | null>(null);
+  const [frontA, setFrontA] = useState(true);
+  const reduce = useReducedMotion();
+
+  useEffect(() => {
+    const a = aRef.current, b = bRef.current;
+    if (!a || !b) return;
+    a.currentTime = 0;
+    a.play().catch(() => {});
+    if (reduce) return;
+
+    let raf = 0;
+    let fading = false;
+    let showA = true;
+    const tick = () => {
+      raf = requestAnimationFrame(tick);
+      const active = showA ? a : b;
+      const incoming = showA ? b : a;
+      if (!active.duration || Number.isNaN(active.duration)) return;
+      if (!fading && active.currentTime >= active.duration - HERO_CROSSFADE) {
+        fading = true;
+        incoming.currentTime = HERO_OFFSET;
+        incoming.play().catch(() => {});
+        showA = !showA;
+        setFrontA(showA);
+        window.setTimeout(() => { active.pause(); fading = false; }, HERO_CROSSFADE * 1000);
+      }
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [reduce]);
+
+  const base = "absolute inset-0 h-full w-full object-cover transition-opacity duration-1000 ease-linear";
+  return <div className={`absolute inset-0 ${className}`}>
+    <video ref={aRef} src={src} poster={poster} muted playsInline preload="auto" className={`${base} ${frontA ? "opacity-100" : "opacity-0"}`} />
+    <video ref={bRef} src={src} poster={poster} muted playsInline preload="auto" className={`${base} ${frontA ? "opacity-0" : "opacity-100"}`} />
+  </div>;
+}
+
 function Hero({ content, lang, setLang, openAdmin }: { content: SiteContent; lang: Lang; setLang: (l: Lang) => void; openAdmin: () => void }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const reduce = useReducedMotion();
@@ -117,7 +163,9 @@ function Hero({ content, lang, setLang, openAdmin }: { content: SiteContent; lan
   return <section id="hero" className="min-h-screen px-3 py-3 sm:px-5 sm:py-5">
     <motion.div ref={ref} className="relative mx-auto h-[calc(100vh-24px)] min-h-[660px] max-w-[1460px] overflow-hidden rounded-[2rem] border border-white/10 bg-[#080808] shadow-[0_60px_180px_rgba(0,0,0,.8)] sm:h-[calc(100vh-40px)] sm:rounded-[2.7rem]" initial={{ opacity: 0, scale: .985 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 1.1, ease }}>
       <motion.div className="absolute inset-0" style={reduce ? undefined : { y: mediaY, scale: mediaScale }}>
-        <VideoOrImage src={content.hero.media} poster={content.hero.poster} type={content.hero.mediaType} className="absolute inset-0 opacity-80" />
+        {content.hero.mediaType === "video"
+          ? <HeroVideo src={content.hero.media} poster={content.hero.poster} className="opacity-80" />
+          : <VideoOrImage src={content.hero.media} poster={content.hero.poster} type={content.hero.mediaType} className="absolute inset-0 opacity-80" />}
       </motion.div>
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,transparent_0,rgba(0,0,0,.15)_32%,rgba(0,0,0,.74)_80%),linear-gradient(0deg,rgba(0,0,0,.94)_0%,rgba(0,0,0,.2)_45%,rgba(0,0,0,.5)_100%)]" />
       <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-16 bg-gradient-to-b from-black/75 to-transparent" />
