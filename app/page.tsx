@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useMotionValue, useReducedMotion, useScroll, useSpring, useTransform } from "framer-motion";
-import { ArrowUpRight, CircleArrowRight, Pencil, Plus, Trash2, X, Brain, Sparkles, Scissors, Box, Eye, Play, LogOut, Upload, Loader2 } from "lucide-react";
+import { ArrowUpRight, CircleArrowRight, Pencil, Plus, Trash2, X, Brain, Sparkles, Scissors, Box, Eye, Play, LogOut, Upload, Loader2, Check } from "lucide-react";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -24,15 +24,8 @@ type EditAPI = {
 const EditContext = createContext<EditAPI | null>(null);
 function useEdit() { return useContext(EditContext); }
 
-// Admin gate: only a SHA-256 hash of the password is ever shipped to the client,
-// so the plaintext password is never present in the bundle or the git history.
-// Default hash = sha256("alex-creates-2026"); override with NEXT_PUBLIC_ADMIN_PASSWORD_HASH.
-const adminPasswordHash = process.env.NEXT_PUBLIC_ADMIN_PASSWORD_HASH || "3c3c5ab0d3845da5a62bbae1a986954d781bdd94feff639229471396f2c08ca7";
-async function sha256Hex(input: string): Promise<string> {
-  const data = new TextEncoder().encode(input);
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, "0")).join("");
-}
+// Admin auth is server-side only (/api/login → data/admin.json). Nothing about
+// the password is shipped to the client.
 // Social contact links — edit handles here.
 const telegramUrl = "https://t.me/alexcreates";
 const telegramHandle = "@alexcreates";
@@ -273,13 +266,30 @@ function LinksEditor({ links, onChange }: { links: { label: string; url: string 
   </div>;
 }
 
+// Delete the actual uploaded files for a removed item (ignores external URLs).
+async function deleteUploads(urls: string[]) {
+  const local = urls.filter(u => u && u.startsWith("/uploads/"));
+  if (!local.length) return;
+  await fetch("/api/upload", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ urls: local }) });
+}
+
 // Popover shell — parent wraps this in <AnimatePresence> and renders when open.
-function EditShell({ title, onClose, onDelete, children, wide = false }: { title: string; onClose: () => void; onDelete?: () => void; children: React.ReactNode; wide?: boolean }) {
-  return <motion.div className="fixed inset-0 z-[80] grid place-items-center bg-black/70 p-4 backdrop-blur-xl" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
-    <motion.div onClick={e => e.stopPropagation()} className={`panel max-h-[88vh] w-full overflow-auto rounded-[1.4rem] p-5 ${wide ? "max-w-3xl" : "max-w-md"}`} initial={{ y: 20, scale: .97, opacity: 0 }} animate={{ y: 0, scale: 1, opacity: 1 }} exit={{ y: 16, scale: .98, opacity: 0 }} transition={{ type: "spring", stiffness: 300, damping: 28 }}>
+// data-lenis-prevent keeps the page behind from scrolling; the panel scrolls.
+function EditShell({ title, onClose, onDelete, onRemove, children, wide = false }: { title: string; onClose: () => void; onDelete?: () => Promise<void>; onRemove?: () => void; children: React.ReactNode; wide?: boolean }) {
+  const [del, setDel] = useState<"idle" | "busy" | "done">("idle");
+  async function handleDelete() {
+    setDel("busy");
+    try { await onDelete?.(); } catch { /* file may be missing; proceed */ }
+    setDel("done");
+    setTimeout(() => onRemove?.(), 700);
+  }
+  return <motion.div data-lenis-prevent className="fixed inset-0 z-[80] grid place-items-center overflow-y-auto bg-black/70 p-4 backdrop-blur-xl" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
+    <motion.div onClick={e => e.stopPropagation()} className={`panel my-auto max-h-[88vh] w-full overflow-auto rounded-[1.4rem] p-5 ${wide ? "max-w-3xl" : "max-w-md"}`} initial={{ y: 20, scale: .97, opacity: 0 }} animate={{ y: 0, scale: 1, opacity: 1 }} exit={{ y: 16, scale: .98, opacity: 0 }} transition={{ type: "spring", stiffness: 300, damping: 28 }}>
       <div className="mb-4 flex items-center justify-between"><h3 className="font-bold">{title}</h3><button onClick={onClose} className="rounded-full bg-white/10 p-1.5 hover:bg-white/20"><X className="h-4 w-4" /></button></div>
       {children}
-      {onDelete && <button onClick={onDelete} className="mt-4 inline-flex items-center gap-2 rounded-full bg-red-500/15 px-4 py-2 text-xs font-medium text-red-200 transition hover:bg-red-500/25"><Trash2 className="h-3.5 w-3.5" />Delete</button>}
+      {onRemove && <button onClick={handleDelete} disabled={del !== "idle"} className={`mt-4 inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-medium transition ${del === "done" ? "bg-green-500/20 text-green-200" : "bg-red-500/15 text-red-200 hover:bg-red-500/25"} disabled:cursor-default`}>
+        {del === "busy" ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Deleting…</> : del === "done" ? <><Check className="h-3.5 w-3.5" />Deleted</> : <><Trash2 className="h-3.5 w-3.5" />Delete</>}
+      </button>}
     </motion.div>
   </motion.div>;
 }
@@ -456,8 +466,8 @@ function PersonTile({ person, lang, onEdit }: { person: Collaborator; lang: Lang
 function PersonEditPopover({ person, idx, onClose }: { person: Collaborator; idx: number; onClose: () => void }) {
   const edit = useEdit()!;
   const set = (f: string, v: unknown) => edit.update(`collaborators.${idx}.${f}`, v);
-  const del = () => { edit.setContent(prev => ({ ...prev, collaborators: prev.collaborators.filter(p => p.id !== person.id) })); onClose(); };
-  return <EditShell title="Edit collaborator" onClose={onClose} onDelete={del} wide>
+  const removeItem = () => { edit.setContent(prev => ({ ...prev, collaborators: prev.collaborators.filter(p => p.id !== person.id) })); onClose(); };
+  return <EditShell title="Edit collaborator" onClose={onClose} onDelete={() => deleteUploads([person.image, person.showreel, person.detailVideo])} onRemove={removeItem} wide>
     <div className="grid gap-5 md:grid-cols-[230px_1fr]">
       <div>
         {/* preview photo in the same portrait shape as the card */}
@@ -498,7 +508,7 @@ function PersonCard({ person, lang, onClick }: { person: Collaborator; lang: Lan
   return <button onClick={onClick} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} className="group relative aspect-[.9] w-full overflow-hidden rounded-[1.45rem] border border-white/10 bg-[#111] text-left transition hover:-translate-y-1 hover:border-white/25"><img src={person.image} alt={t(person.name, lang)} className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-105" /><AnimatePresence>{hover && <motion.video key="showreel" src={person.showreel} poster={person.image} autoPlay muted loop playsInline className="absolute inset-0 h-full w-full object-cover" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 1, ease }} />}</AnimatePresence><div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent" /><div className="absolute bottom-0 p-5"><h3 className="text-xl font-bold tracking-[-.04em]">{t(person.name, lang)}</h3><p className="mt-1 text-sm text-[#e1e0cc]/65">{t(person.role, lang)}</p><p className="mt-4 mono text-[10px] font-medium uppercase tracking-[.18em] text-[#e1e0cc]/65">{person.studio}</p></div></button>;
 }
 function PersonModal({ person, lang, onClose }: { person: Collaborator | null; lang: Lang; onClose: () => void }) {
-  return <AnimatePresence>{person && <motion.div className="fixed inset-0 z-50 grid place-items-center bg-black/80 p-4 backdrop-blur-xl" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}><motion.div onClick={e => e.stopPropagation()} className="panel max-h-[92vh] w-full max-w-4xl overflow-auto rounded-[2rem] p-4 md:p-6" initial={{ y: 30, scale: .97 }} animate={{ y: 0, scale: 1 }} exit={{ y: 30, scale: .97 }}><div className="mb-4 flex justify-end"><button onClick={onClose} className="rounded-full bg-white/10 p-2 hover:bg-white/20"><X /></button></div><div className="grid gap-6 md:grid-cols-[1.15fr_.85fr]"><div className="overflow-hidden rounded-[1.4rem]"><VideoOrImage src={person.detailVideo} poster={person.image} /></div><div><p className="text-[10px] font-bold uppercase tracking-[.22em] text-[#e1e0cc]/45">{person.studio}</p><h3 className="mt-3 text-4xl font-bold tracking-[-.06em]">{t(person.name, lang)}</h3><p className="mt-2 text-[#d89b57]">{t(person.role, lang)}</p><p className="mt-7 text-sm leading-7 text-[#e1e0cc]/65">{t(person.bio, lang)}</p><div className="mt-8 flex flex-wrap gap-2">{person.links.map(l => <a key={l.label} className="rounded-full border border-white/10 px-4 py-2 text-sm hover:bg-white/10" href={l.url} target="_blank">{l.label}</a>)}</div></div></div></motion.div></motion.div>}</AnimatePresence>;
+  return <AnimatePresence>{person && <motion.div data-lenis-prevent className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/80 p-4 backdrop-blur-xl" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}><motion.div onClick={e => e.stopPropagation()} className="panel max-h-[92vh] w-full max-w-4xl overflow-auto rounded-[2rem] p-4 md:p-6" initial={{ y: 30, scale: .97 }} animate={{ y: 0, scale: 1 }} exit={{ y: 30, scale: .97 }}><div className="mb-4 flex justify-end"><button onClick={onClose} className="rounded-full bg-white/10 p-2 hover:bg-white/20"><X /></button></div><div className="grid gap-6 md:grid-cols-[1.15fr_.85fr]"><div className="overflow-hidden rounded-[1.4rem]"><VideoOrImage src={person.detailVideo} poster={person.image} /></div><div><p className="text-[10px] font-bold uppercase tracking-[.22em] text-[#e1e0cc]/45">{person.studio}</p><h3 className="mt-3 text-4xl font-bold tracking-[-.06em]">{t(person.name, lang)}</h3><p className="mt-2 text-[#d89b57]">{t(person.role, lang)}</p><p className="mt-7 text-sm leading-7 text-[#e1e0cc]/65">{t(person.bio, lang)}</p><div className="mt-8 flex flex-wrap gap-2">{person.links.map(l => <a key={l.label} className="rounded-full border border-white/10 px-4 py-2 text-sm hover:bg-white/10" href={l.url} target="_blank">{l.label}</a>)}</div></div></div></motion.div></motion.div>}</AnimatePresence>;
 }
 
 // Views pill + round client avatar, shown over each work video and in the modal.
@@ -611,10 +621,10 @@ function EditWorkCard({ work, lang, onEdit }: { work: WorkItem; lang: Lang; onEd
 function WorkEditPopover({ work, idx, onClose }: { work: WorkItem; idx: number; onClose: () => void }) {
   const edit = useEdit()!;
   const set = (field: string, value: unknown) => edit.update(`works.${idx}.${field}`, value);
-  const del = () => { edit.setContent(prev => ({ ...prev, works: prev.works.filter(w => w.id !== work.id) })); onClose(); };
+  const removeItem = () => { edit.setContent(prev => ({ ...prev, works: prev.works.filter(w => w.id !== work.id) })); onClose(); };
   const portrait = work.orientation === "portrait";
   const ratio = portrait ? "aspect-[9/16]" : "aspect-video";
-  return <EditShell title="Edit video" onClose={onClose} onDelete={del} wide>
+  return <EditShell title="Edit video" onClose={onClose} onDelete={() => deleteUploads([work.video, work.poster, work.avatar])} onRemove={removeItem} wide>
     <div className="mb-5">
       <p className="mb-1.5 text-xs text-[#e1e0cc]/60">Format — how it shows in the grid</p>
       <div className="flex gap-2">
@@ -678,7 +688,7 @@ function WorkCard({ work, lang, onClick }: { work: WorkItem; lang: Lang; onClick
 
 function WorkModal({ work, lang, onClose }: { work: WorkItem | null; lang: Lang; onClose: () => void }) {
   const portrait = work?.orientation === "portrait";
-  return <AnimatePresence>{work && <motion.div className="fixed inset-0 z-[70] grid place-items-center bg-black/82 p-4 backdrop-blur-xl" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
+  return <AnimatePresence>{work && <motion.div data-lenis-prevent className="fixed inset-0 z-[70] grid place-items-center overflow-y-auto bg-black/82 p-4 backdrop-blur-xl" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
     <motion.div onClick={e => e.stopPropagation()} className={`panel max-h-[92vh] w-full overflow-auto rounded-[1.8rem] p-4 md:p-6 ${portrait ? "max-w-3xl" : "max-w-5xl"}`} initial={{ y: 28, scale: .96, opacity: 0 }} animate={{ y: 0, scale: 1, opacity: 1 }} exit={{ y: 24, scale: .97, opacity: 0 }} transition={{ type: "spring", stiffness: 260, damping: 26 }}>
       <div className="mb-4 flex items-center justify-between gap-4">
         <p className="mono text-[10px] font-medium uppercase tracking-[.3em] text-[#e1e0cc]/55">{t(work.client, lang)}</p>
@@ -780,14 +790,22 @@ function CustomCursor() {
 
 // Password gate. On success you "enter" the live site in edit mode.
 function LoginGate({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
-  const [pw, setPw] = useState(""); const [err, setErr] = useState("");
-  async function submit() { if (await sha256Hex(pw) === adminPasswordHash) onSuccess(); else setErr("Wrong password"); }
-  return <motion.div className="fixed inset-0 z-[96] grid place-items-center bg-black/80 p-4 backdrop-blur-xl" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
+  const [pw, setPw] = useState(""); const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
+  // Password is verified server-side (/api/login) against data/admin.json, so it
+  // is never present in the client bundle.
+  async function submit() {
+    setBusy(true); setErr("");
+    try {
+      const res = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: pw }) });
+      if (res.ok) onSuccess(); else setErr("Wrong password");
+    } catch { setErr("Could not reach server"); } finally { setBusy(false); }
+  }
+  return <motion.div data-lenis-prevent className="fixed inset-0 z-[96] grid place-items-center bg-black/80 p-4 backdrop-blur-xl" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
     <motion.div onClick={e => e.stopPropagation()} className="panel w-full max-w-xs rounded-[1.3rem] p-5" initial={{ y: 18, scale: .97, opacity: 0 }} animate={{ y: 0, scale: 1, opacity: 1 }} exit={{ y: 14, scale: .98, opacity: 0 }} transition={{ type: "spring", stiffness: 300, damping: 28 }}>
       <p className="mb-3 text-sm font-medium text-[#e8e7d5]">Admin login</p>
       <input autoFocus type="password" value={pw} onChange={e => setPw(e.target.value)} onKeyDown={e => e.key === "Enter" && submit()} placeholder="Password" className="w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2.5 text-sm text-[#e1e0cc] outline-none transition focus:border-[#d89b57]/50 focus:shadow-[0_0_0_3px_rgba(216,155,87,0.12)]" />
       {err && <p className="mt-2 text-xs text-red-300">{err}</p>}
-      <button onClick={submit} className="mt-3 w-full rounded-full bg-[#e1e0cc] py-2.5 text-sm font-bold text-black transition hover:bg-white active:scale-[.98]">Enter edit mode</button>
+      <button onClick={submit} disabled={busy} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#e1e0cc] py-2.5 text-sm font-bold text-black transition hover:bg-white active:scale-[.98] disabled:opacity-70">{busy && <Loader2 className="h-4 w-4 animate-spin" />}Enter edit mode</button>
     </motion.div>
   </motion.div>;
 }

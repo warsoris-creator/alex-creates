@@ -31,3 +31,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Upload failed" }, { status: 500 });
   }
 }
+
+// Delete uploaded files from disk (used when a work/collaborator is removed).
+// Only touches files inside public/uploads; external URLs are ignored.
+export async function DELETE(req: NextRequest) {
+  try {
+    const { urls } = await req.json();
+    if (!Array.isArray(urls)) return NextResponse.json({ error: "Invalid" }, { status: 400 });
+    for (const u of urls) {
+      if (typeof u !== "string" || !u.startsWith("/uploads/")) continue;
+      const name = path.basename(u); // basename prevents path traversal
+      await fs.unlink(path.join(uploadDir, name)).catch(() => {});
+    }
+    return NextResponse.json({ ok: true });
+  } catch {
+    return NextResponse.json({ error: "Delete failed" }, { status: 500 });
+  }
+}
