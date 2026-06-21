@@ -173,7 +173,27 @@ function HeroVideo({ src, poster, className = "" }: { src: string; poster?: stri
   </div>;
 }
 
-function Hero({ content, lang, setLang, openAdmin }: { content: SiteContent; lang: Lang; setLang: (l: Lang) => void; openAdmin: () => void }) {
+// Pinned glass header: stays at the top of the viewport on scroll. Sits over the
+// hero transparently and condenses into a more solid pill once the page scrolls.
+function Header({ content, lang, setLang }: { content: SiteContent; lang: Lang; setLang: (l: Lang) => void }) {
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 40);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+  return <motion.header className="fixed inset-x-0 top-0 z-40 flex justify-center px-3 pt-4 sm:pt-5" initial={{ y: -32, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: .8, delay: .2, ease }}>
+    <nav className={`flex w-[calc(100%-12px)] max-w-3xl flex-wrap items-center justify-center gap-1 rounded-full border p-1.5 text-[13px] shadow-2xl backdrop-blur-xl transition-colors duration-500 sm:w-auto sm:flex-nowrap ${scrolled ? "border-white/10 bg-black/72" : "border-white/10 bg-black/40"}`}>
+      {t(content.nav, lang).map((item, i) => <a key={item} href={["#collaborators", "#tools", "#stats", "#contact"][i]} className="rounded-full px-4 py-2.5 text-[#e1e0cc]/80 transition hover:bg-white/10 hover:text-white">{item}</a>)}
+      <span className="mx-1.5 hidden h-6 w-px bg-white/15 sm:block" />
+      <button onClick={() => setLang("ru")} className={`rounded-full px-3.5 py-2.5 font-medium transition active:scale-[0.98] ${lang === "ru" ? "bg-[#e1e0cc] text-black" : "text-[#e1e0cc]/65 hover:bg-white/10"}`}>RU</button>
+      <button onClick={() => setLang("en")} className={`rounded-full px-3.5 py-2.5 font-medium transition active:scale-[0.98] ${lang === "en" ? "bg-[#e1e0cc] text-black" : "text-[#e1e0cc]/65 hover:bg-white/10"}`}>EN</button>
+    </nav>
+  </motion.header>;
+}
+
+function Hero({ content, lang, openAdmin }: { content: SiteContent; lang: Lang; openAdmin: () => void }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const reduce = useReducedMotion();
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end start"] });
@@ -188,12 +208,6 @@ function Hero({ content, lang, setLang, openAdmin }: { content: SiteContent; lan
       </motion.div>
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,transparent_0,rgba(0,0,0,.15)_32%,rgba(0,0,0,.74)_80%),linear-gradient(0deg,rgba(0,0,0,.94)_0%,rgba(0,0,0,.2)_45%,rgba(0,0,0,.5)_100%)]" />
       <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-16 bg-gradient-to-b from-black/75 to-transparent" />
-      <nav className="absolute left-1/2 top-5 z-20 flex w-[calc(100%-24px)] max-w-3xl -translate-x-1/2 flex-wrap items-center justify-center gap-1 rounded-full border border-white/10 bg-black/58 p-1.5 text-[13px] shadow-2xl backdrop-blur-xl sm:top-7 sm:w-auto sm:flex-nowrap">
-        {t(content.nav, lang).map((item, i) => <a key={item} href={["#collaborators", "#tools", "#stats", "#contact"][i]} className="rounded-full px-4 py-2.5 text-[#e1e0cc]/80 transition hover:bg-white/10 hover:text-white">{item}</a>)}
-        <span className="mx-1.5 hidden h-6 w-px bg-white/15 sm:block" />
-        <button onClick={() => setLang("ru")} className={`rounded-full px-3.5 py-2.5 font-medium ${lang === "ru" ? "bg-[#e1e0cc] text-black" : "text-[#e1e0cc]/65 hover:bg-white/10"}`}>RU</button>
-        <button onClick={() => setLang("en")} className={`rounded-full px-3.5 py-2.5 font-medium ${lang === "en" ? "bg-[#e1e0cc] text-black" : "text-[#e1e0cc]/65 hover:bg-white/10"}`}>EN</button>
-      </nav>
       <button aria-label="Open admin" onClick={openAdmin} className="absolute right-0 top-0 z-30 h-12 w-12 opacity-0" />
       <div className="absolute inset-x-0 bottom-0 z-10 grid items-end gap-5 p-5 sm:p-8 xl:grid-cols-[minmax(0,1fr)_minmax(270px,390px)] lg:p-10">
         <motion.h1 className="display min-w-0 max-w-full whitespace-nowrap text-[clamp(2.6rem,9vw,7.5rem)] font-extrabold leading-[.82] tracking-[-.045em] text-[#e8e7d5] drop-shadow-2xl" initial={{ y: 80, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 1, delay: .25, ease }}>{content.hero.title}</motion.h1>
@@ -351,5 +365,5 @@ export default function Home() {
   // Use e.code (physical key) so the shortcut works on any keyboard layout —
   // on a Russian layout e.key for the A key is "ф", which broke the old check.
   useEffect(() => { const handler = (e: globalThis.KeyboardEvent) => { if (e.ctrlKey && e.altKey && e.code === "KeyA") { e.preventDefault(); setAdminOpen(true); } }; window.addEventListener("keydown", handler); return () => window.removeEventListener("keydown", handler); }, []);
-  return <main className="relative"><CustomCursor /><Hero content={content} lang={lang} setLang={setLang} openAdmin={() => setAdminOpen(true)} /><Tools content={content} lang={lang} /><Collaborators content={content} lang={lang} /><Stats content={content} lang={lang} /><Contact content={content} lang={lang} /><footer className="container flex flex-wrap items-center justify-between gap-3 border-t border-white/10 py-10 text-sm text-[#e1e0cc]/45"><span>{lang === "ru" ? "© 2026 alex.creates — кинематографичный монтаж и режиссура." : "© 2026 alex.creates — cinematic editing and direction."}</span><span className="mono text-xs tracking-[.2em] text-[#e1e0cc]/35">v0.3</span></footer><AdminPanel open={adminOpen} onClose={() => setAdminOpen(false)} content={content} setContent={setContent} /></main>;
+  return <main className="relative"><CustomCursor /><Header content={content} lang={lang} setLang={setLang} /><Hero content={content} lang={lang} openAdmin={() => setAdminOpen(true)} /><Tools content={content} lang={lang} /><Collaborators content={content} lang={lang} /><Stats content={content} lang={lang} /><Contact content={content} lang={lang} /><footer className="container flex flex-wrap items-center justify-between gap-3 border-t border-white/10 py-10 text-sm text-[#e1e0cc]/45"><span>{lang === "ru" ? "© 2026 alex.creates — кинематографичный монтаж и режиссура." : "© 2026 alex.creates — cinematic editing and direction."}</span><span className="mono text-xs tracking-[.2em] text-[#e1e0cc]/35">v0.3</span></footer><AdminPanel open={adminOpen} onClose={() => setAdminOpen(false)} content={content} setContent={setContent} /></main>;
 }
