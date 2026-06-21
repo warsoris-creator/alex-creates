@@ -44,7 +44,7 @@ export const defaultContent: SiteContent = {
   },
   hero: {
     title: "alex.creates*",
-    media: "/alex-creates/hero.mp4",
+    media: "/alex-creates/hero.webm",
     poster: "/alex-creates/hero-cliff.png",
     mediaType: "video",
     description: {
@@ -131,5 +131,5 @@ export const defaultContent: SiteContent = {
   },
 };
 
-export const storageKey = "alex.creates.content.v4";
+export const storageKey = "alex.creates.content.v5";
 export const languageKey = "alex.creates.lang";
