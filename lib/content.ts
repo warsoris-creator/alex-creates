@@ -50,6 +50,8 @@ export type SiteContent = {
 
 const videoA = "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
 const videoB = "https://www.w3schools.com/html/mov_bbb.mp4";
+// Static GitHub Pages serves from /alex-creates; the Node server serves from root.
+const base = process.env.NEXT_PUBLIC_BASE_PATH || "";
 
 export const defaultContent: SiteContent = {
   nav: {
@@ -58,8 +60,8 @@ export const defaultContent: SiteContent = {
   },
   hero: {
     title: "alex.creates*",
-    media: "/hero.webm",
-    poster: "/hero-cliff.png",
+    media: `${base}/hero.webm`,
+    poster: `${base}/hero-cliff.png`,
     mediaType: "video",
     description: {
       en: "alex.creates is a worldwide network of visual artists, filmmakers, and storytellers bound not by place, status, or labels, but by passion and hunger to unlock potential through unique perspectives.",

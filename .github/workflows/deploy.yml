@@ -31,7 +31,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # GitHub Pages is static — drop the server-only API routes (they can't be
+      # exported). This is a design-preview build: editing/saving/uploads need
+      # the Node server and won't work here.
+      - name: Strip server API routes
+        run: rm -rf app/api lib/store.ts lib/auth.ts
+
       - name: Build static site
+        env:
+          STATIC_EXPORT: "true"
+          NEXT_PUBLIC_STATIC_EXPORT: "true"
+          NEXT_PUBLIC_BASE_PATH: "/alex-creates"
         run: npm run build
 
       - name: Upload artifact

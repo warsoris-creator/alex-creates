@@ -795,13 +795,26 @@ function CustomCursor() {
 }
 
 // Password gate. On success you "enter" the live site in edit mode.
+// Used ONLY in the static GitHub Pages demo (no server). Gated by
+// NEXT_PUBLIC_STATIC_EXPORT so it is tree-shaken out of the real Node build.
+const DEMO_HASH = "3c3c5ab0d3845da5a62bbae1a986954d781bdd94feff639229471396f2c08ca7";
+async function sha256Hex(input: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+  return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
 function LoginGate({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
   const [pw, setPw] = useState(""); const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
-  // Password is verified server-side (/api/login) against data/admin.json, so it
-  // is never present in the client bundle.
+  // Real deploy verifies server-side (/api/login → data/admin.json), so the
+  // password is never in the client bundle. The static demo falls back to a
+  // client check just so the admin design can be explored.
   async function submit() {
     setBusy(true); setErr("");
     try {
+      if (process.env.NEXT_PUBLIC_STATIC_EXPORT === "true") {
+        if (await sha256Hex(pw) === DEMO_HASH) onSuccess(); else setErr("Wrong password");
+        return;
+      }
       const res = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: pw }) });
       if (res.ok) onSuccess(); else setErr("Wrong password");
     } catch { setErr("Could not reach server"); } finally { setBusy(false); }
