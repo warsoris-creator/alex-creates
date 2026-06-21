@@ -210,7 +210,7 @@ function Hero({ content, lang, openAdmin }: { content: SiteContent; lang: Lang; 
       <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-16 bg-gradient-to-b from-black/75 to-transparent" />
       <button aria-label="Open admin" onClick={openAdmin} className="absolute right-0 top-0 z-30 h-12 w-12 opacity-0" />
       <div className="absolute inset-x-0 bottom-0 z-10 grid items-end gap-5 p-5 sm:p-8 xl:grid-cols-[minmax(0,1fr)_minmax(270px,390px)] lg:p-10">
-        <motion.h1 className="display min-w-0 max-w-full whitespace-nowrap text-[clamp(2.6rem,9vw,7.5rem)] font-extrabold leading-[.82] tracking-[-.045em] text-[#e8e7d5] drop-shadow-2xl" initial={{ y: 80, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 1, delay: .25, ease }}>{content.hero.title}</motion.h1>
+        <motion.h1 className="display keep-latin min-w-0 max-w-full whitespace-nowrap text-[clamp(2.6rem,9vw,7.5rem)] font-extrabold leading-[.82] tracking-[-.045em] text-[#e8e7d5] drop-shadow-2xl" initial={{ y: 80, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 1, delay: .25, ease }}>{content.hero.title}</motion.h1>
         <motion.div className="mb-2 max-w-md" initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: .9, delay: .45, ease }}>
           <p className="text-xs leading-5 text-[#eeecd6]/75 sm:text-sm">{t(content.hero.description, lang)}</p>
           <a href="#contact" className="mt-5 inline-flex items-center gap-3 rounded-full bg-[#e1e0cc] px-4 py-2.5 text-xs font-bold text-black transition hover:scale-[1.03] hover:bg-white">{t(content.hero.cta, lang)}<CircleArrowRight className="h-6 w-6" /></a>
