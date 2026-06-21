@@ -1,7 +1,7 @@
 "use client";
 
 import { KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
-import { AnimatePresence, motion, useInView, useReducedMotion, useScroll, useTransform } from "framer-motion";
+import { AnimatePresence, motion, useInView, useMotionValue, useReducedMotion, useScroll, useSpring, useTransform } from "framer-motion";
 import { ArrowUpRight, CircleArrowRight, Film, Pencil, Plus, Save, Trash2, X, Brain, Sparkles, Scissors, Box } from "lucide-react";
 import Lenis from "lenis";
 import NumberFlow from "@number-flow/react";
@@ -207,7 +207,7 @@ function About({ content, lang }: { content: SiteContent; lang: Lang }) {
 }
 
 function Tools({ content, lang }: { content: SiteContent; lang: Lang }) {
-  return <section id="tools" className="border-y border-white/5 bg-[#050505] py-24"><div className="container">
+  return <section id="tools" className="py-24"><div className="container">
     <Reveal><div className="mb-10 text-center"><h2 className="display text-[clamp(2rem,4vw,3.2rem)] font-bold tracking-[-.025em]">{t(content.toolsIntro.title, lang)}</h2><p className="text-xl text-[#e1e0cc]/50">{t(content.toolsIntro.subtitle, lang)}</p></div></Reveal>
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
       <Reveal><div className="group relative min-h-[430px] overflow-hidden rounded-[1.6rem] border border-white/10 bg-[#101010]"><VideoOrImage src={content.toolsIntro.canvasShowreel} poster={content.toolsIntro.canvasPoster} /><div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-transparent" /><h3 className="absolute bottom-7 left-6 max-w-[13rem] text-2xl font-bold tracking-[-.05em]">{t(content.toolsIntro.canvasTitle, lang)}</h3></div></Reveal>
@@ -272,9 +272,53 @@ function AdminInput({ label, value, onChange, textarea = false }: { label: strin
 function AdminCollectionTools({ tools, setContent }: { tools: ToolCard[]; setContent: React.Dispatch<React.SetStateAction<SiteContent>> }) { return <AdminSection title="Software / tool cards"><div className="grid gap-3 md:grid-cols-2">{tools.map((tool, i) => <div key={tool.id} className="rounded-xl border border-white/10 p-3"><div className="mb-2 flex justify-between"><b>{tool.title.en}</b><button onClick={() => setContent(p => ({ ...p, tools: p.tools.filter(x => x.id !== tool.id) }))}><Trash2 className="h-4 w-4" /></button></div><AdminInput label="Icon key: ae / blend / brain / spark / cut" value={tool.icon} onChange={v => setContent(p => structuredCloneAndSet(p, `tools.${i}.icon`, v as ToolCard["icon"]))} /><AdminInput label="Title EN" value={tool.title.en} onChange={v => setContent(p => structuredCloneAndSet(p, `tools.${i}.title.en`, v))} /><AdminInput label="Title RU" value={tool.title.ru} onChange={v => setContent(p => structuredCloneAndSet(p, `tools.${i}.title.ru`, v))} /><AdminInput label="Subtitle EN" value={tool.subtitle.en} onChange={v => setContent(p => structuredCloneAndSet(p, `tools.${i}.subtitle.en`, v))} textarea /><AdminInput label="Subtitle RU" value={tool.subtitle.ru} onChange={v => setContent(p => structuredCloneAndSet(p, `tools.${i}.subtitle.ru`, v))} textarea /><AdminInput label="Checklist EN (one per line)" value={tool.checklist.en.join("\n")} onChange={v => setContent(p => structuredCloneAndSet(p, `tools.${i}.checklist.en`, v.split("\n")))} textarea /><AdminInput label="Checklist RU (one per line)" value={tool.checklist.ru.join("\n")} onChange={v => setContent(p => structuredCloneAndSet(p, `tools.${i}.checklist.ru`, v.split("\n")))} textarea /><AdminInput label="Poster" value={tool.poster} onChange={v => setContent(p => structuredCloneAndSet(p, `tools.${i}.poster`, v))} /><AdminInput label="Hover showreel" value={tool.showreel} onChange={v => setContent(p => structuredCloneAndSet(p, `tools.${i}.showreel`, v))} /></div>)}</div></AdminSection>; }
 function AdminCollectionPeople({ people, setContent }: { people: Collaborator[]; setContent: React.Dispatch<React.SetStateAction<SiteContent>> }) { return <AdminSection title="Collaborators"><div className="grid gap-3 md:grid-cols-2">{people.map((p, i) => <div key={p.id} className="rounded-xl border border-white/10 p-3"><div className="mb-2 flex justify-between"><b>{p.name.en}</b><button onClick={() => setContent(c => ({ ...c, collaborators: c.collaborators.filter(x => x.id !== p.id) }))}><Trash2 className="h-4 w-4" /></button></div><AdminInput label="Name EN" value={p.name.en} onChange={v => setContent(c => structuredCloneAndSet(c, `collaborators.${i}.name.en`, v))} /><AdminInput label="Name RU" value={p.name.ru} onChange={v => setContent(c => structuredCloneAndSet(c, `collaborators.${i}.name.ru`, v))} /><AdminInput label="Role EN" value={p.role.en} onChange={v => setContent(c => structuredCloneAndSet(c, `collaborators.${i}.role.en`, v))} /><AdminInput label="Role RU" value={p.role.ru} onChange={v => setContent(c => structuredCloneAndSet(c, `collaborators.${i}.role.ru`, v))} /><AdminInput label="Studio/company" value={p.studio} onChange={v => setContent(c => structuredCloneAndSet(c, `collaborators.${i}.studio`, v))} /><AdminInput label="Bio EN" value={p.bio.en} onChange={v => setContent(c => structuredCloneAndSet(c, `collaborators.${i}.bio.en`, v))} textarea /><AdminInput label="Bio RU" value={p.bio.ru} onChange={v => setContent(c => structuredCloneAndSet(c, `collaborators.${i}.bio.ru`, v))} textarea /><AdminInput label="Image/poster" value={p.image} onChange={v => setContent(c => structuredCloneAndSet(c, `collaborators.${i}.image`, v))} /><AdminInput label="Card showreel" value={p.showreel} onChange={v => setContent(c => structuredCloneAndSet(c, `collaborators.${i}.showreel`, v))} /><AdminInput label="Detail video" value={p.detailVideo} onChange={v => setContent(c => structuredCloneAndSet(c, `collaborators.${i}.detailVideo`, v))} /><AdminInput label="Links JSON" value={JSON.stringify(p.links)} onChange={v => { try { const parsed = JSON.parse(v); setContent(c => structuredCloneAndSet(c, `collaborators.${i}.links`, parsed)); } catch {} }} textarea /></div>)}</div></AdminSection>; }
 
+// Bespoke cinematic cursor: a precise warm dot trailed by a lagging cream ring
+// that swells over interactive elements. Desktop / fine-pointer only.
+function CustomCursor() {
+  const reduce = useReducedMotion();
+  const x = useMotionValue(-100);
+  const y = useMotionValue(-100);
+  const ringX = useSpring(x, { stiffness: 380, damping: 30, mass: .6 });
+  const ringY = useSpring(y, { stiffness: 380, damping: 30, mass: .6 });
+  const [hovering, setHovering] = useState(false);
+  const [down, setDown] = useState(false);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    if (reduce || typeof window === "undefined") return;
+    if (window.matchMedia("(pointer: coarse)").matches) return;
+    const move = (e: MouseEvent) => {
+      x.set(e.clientX); y.set(e.clientY); setVisible(true);
+      const el = e.target;
+      setHovering(el instanceof Element && !!el.closest("a, button, [role=button], input, textarea, label, [data-cursor]"));
+    };
+    const onDown = () => setDown(true);
+    const onUp = () => setDown(false);
+    const onLeave = () => setVisible(false);
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("mouseup", onUp);
+    document.addEventListener("mouseleave", onLeave);
+    document.documentElement.classList.add("custom-cursor");
+    return () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("mouseup", onUp);
+      document.removeEventListener("mouseleave", onLeave);
+      document.documentElement.classList.remove("custom-cursor");
+    };
+  }, [reduce, x, y]);
+
+  if (reduce) return null;
+  return <div className="pointer-events-none fixed inset-0 z-[100] hidden md:block" aria-hidden style={{ opacity: visible ? 1 : 0, transition: "opacity .25s ease", mixBlendMode: "difference" }}>
+    <motion.div className="absolute h-2 w-2 -ml-1 -mt-1 rounded-full bg-[#f4f0e2]" style={{ x, y }} animate={{ scale: down ? .5 : 1 }} transition={{ type: "spring", stiffness: 500, damping: 28 }} />
+    <motion.div className="absolute h-10 w-10 -ml-5 -mt-5 rounded-full border border-[#f4f0e2]" style={{ x: ringX, y: ringY }} animate={{ scale: down ? .85 : hovering ? 1.9 : 1, opacity: hovering ? 1 : .55 }} transition={{ type: "spring", stiffness: 280, damping: 22 }} />
+  </div>;
+}
+
 export default function Home() {
   const [content, setContent] = useSiteContent(); const [lang, setLang] = useLanguage(); const [adminOpen, setAdminOpen] = useState(false);
   useSmoothScroll();
   useEffect(() => { const handler = (e: globalThis.KeyboardEvent) => { if (e.ctrlKey && e.altKey && e.key.toLowerCase() === "a") setAdminOpen(true); }; window.addEventListener("keydown", handler); return () => window.removeEventListener("keydown", handler); }, []);
-  return <main className="relative"><Hero content={content} lang={lang} setLang={setLang} openAdmin={() => setAdminOpen(true)} /><Tools content={content} lang={lang} /><Collaborators content={content} lang={lang} /><Stats content={content} lang={lang} /><Contact content={content} lang={lang} /><footer className="container flex flex-wrap items-center justify-between gap-3 border-t border-white/10 py-10 text-sm text-[#e1e0cc]/45"><span>{lang === "ru" ? "© 2026 alex.creates — кинематографичный монтаж и режиссура." : "© 2026 alex.creates — cinematic editing and direction."}</span><span className="mono text-xs tracking-[.2em] text-[#e1e0cc]/35">v0.2</span></footer><AdminPanel open={adminOpen} onClose={() => setAdminOpen(false)} content={content} setContent={setContent} /></main>;
+  return <main className="relative"><CustomCursor /><Hero content={content} lang={lang} setLang={setLang} openAdmin={() => setAdminOpen(true)} /><Tools content={content} lang={lang} /><Collaborators content={content} lang={lang} /><Stats content={content} lang={lang} /><Contact content={content} lang={lang} /><footer className="container flex flex-wrap items-center justify-between gap-3 border-t border-white/10 py-10 text-sm text-[#e1e0cc]/45"><span>{lang === "ru" ? "© 2026 alex.creates — кинематографичный монтаж и режиссура." : "© 2026 alex.creates — cinematic editing and direction."}</span><span className="mono text-xs tracking-[.2em] text-[#e1e0cc]/35">v0.2</span></footer><AdminPanel open={adminOpen} onClose={() => setAdminOpen(false)} content={content} setContent={setContent} /></main>;
 }
