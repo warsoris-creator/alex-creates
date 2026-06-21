@@ -272,25 +272,33 @@ function AdminInput({ label, value, onChange, textarea = false }: { label: strin
 function AdminCollectionTools({ tools, setContent }: { tools: ToolCard[]; setContent: React.Dispatch<React.SetStateAction<SiteContent>> }) { return <AdminSection title="Software / tool cards"><div className="grid gap-3 md:grid-cols-2">{tools.map((tool, i) => <div key={tool.id} className="rounded-xl border border-white/10 p-3"><div className="mb-2 flex justify-between"><b>{tool.title.en}</b><button onClick={() => setContent(p => ({ ...p, tools: p.tools.filter(x => x.id !== tool.id) }))}><Trash2 className="h-4 w-4" /></button></div><AdminInput label="Icon key: ae / blend / brain / spark / cut" value={tool.icon} onChange={v => setContent(p => structuredCloneAndSet(p, `tools.${i}.icon`, v as ToolCard["icon"]))} /><AdminInput label="Title EN" value={tool.title.en} onChange={v => setContent(p => structuredCloneAndSet(p, `tools.${i}.title.en`, v))} /><AdminInput label="Title RU" value={tool.title.ru} onChange={v => setContent(p => structuredCloneAndSet(p, `tools.${i}.title.ru`, v))} /><AdminInput label="Subtitle EN" value={tool.subtitle.en} onChange={v => setContent(p => structuredCloneAndSet(p, `tools.${i}.subtitle.en`, v))} textarea /><AdminInput label="Subtitle RU" value={tool.subtitle.ru} onChange={v => setContent(p => structuredCloneAndSet(p, `tools.${i}.subtitle.ru`, v))} textarea /><AdminInput label="Checklist EN (one per line)" value={tool.checklist.en.join("\n")} onChange={v => setContent(p => structuredCloneAndSet(p, `tools.${i}.checklist.en`, v.split("\n")))} textarea /><AdminInput label="Checklist RU (one per line)" value={tool.checklist.ru.join("\n")} onChange={v => setContent(p => structuredCloneAndSet(p, `tools.${i}.checklist.ru`, v.split("\n")))} textarea /><AdminInput label="Poster" value={tool.poster} onChange={v => setContent(p => structuredCloneAndSet(p, `tools.${i}.poster`, v))} /><AdminInput label="Hover showreel" value={tool.showreel} onChange={v => setContent(p => structuredCloneAndSet(p, `tools.${i}.showreel`, v))} /></div>)}</div></AdminSection>; }
 function AdminCollectionPeople({ people, setContent }: { people: Collaborator[]; setContent: React.Dispatch<React.SetStateAction<SiteContent>> }) { return <AdminSection title="Collaborators"><div className="grid gap-3 md:grid-cols-2">{people.map((p, i) => <div key={p.id} className="rounded-xl border border-white/10 p-3"><div className="mb-2 flex justify-between"><b>{p.name.en}</b><button onClick={() => setContent(c => ({ ...c, collaborators: c.collaborators.filter(x => x.id !== p.id) }))}><Trash2 className="h-4 w-4" /></button></div><AdminInput label="Name EN" value={p.name.en} onChange={v => setContent(c => structuredCloneAndSet(c, `collaborators.${i}.name.en`, v))} /><AdminInput label="Name RU" value={p.name.ru} onChange={v => setContent(c => structuredCloneAndSet(c, `collaborators.${i}.name.ru`, v))} /><AdminInput label="Role EN" value={p.role.en} onChange={v => setContent(c => structuredCloneAndSet(c, `collaborators.${i}.role.en`, v))} /><AdminInput label="Role RU" value={p.role.ru} onChange={v => setContent(c => structuredCloneAndSet(c, `collaborators.${i}.role.ru`, v))} /><AdminInput label="Studio/company" value={p.studio} onChange={v => setContent(c => structuredCloneAndSet(c, `collaborators.${i}.studio`, v))} /><AdminInput label="Bio EN" value={p.bio.en} onChange={v => setContent(c => structuredCloneAndSet(c, `collaborators.${i}.bio.en`, v))} textarea /><AdminInput label="Bio RU" value={p.bio.ru} onChange={v => setContent(c => structuredCloneAndSet(c, `collaborators.${i}.bio.ru`, v))} textarea /><AdminInput label="Image/poster" value={p.image} onChange={v => setContent(c => structuredCloneAndSet(c, `collaborators.${i}.image`, v))} /><AdminInput label="Card showreel" value={p.showreel} onChange={v => setContent(c => structuredCloneAndSet(c, `collaborators.${i}.showreel`, v))} /><AdminInput label="Detail video" value={p.detailVideo} onChange={v => setContent(c => structuredCloneAndSet(c, `collaborators.${i}.detailVideo`, v))} /><AdminInput label="Links JSON" value={JSON.stringify(p.links)} onChange={v => { try { const parsed = JSON.parse(v); setContent(c => structuredCloneAndSet(c, `collaborators.${i}.links`, parsed)); } catch {} }} textarea /></div>)}</div></AdminSection>; }
 
-// Bespoke cinematic cursor: a precise warm dot trailed by a lagging cream ring
-// that swells over interactive elements. Desktop / fine-pointer only.
+// Cinematic camera-focus cursor: four AF corner brackets that track the pointer
+// and lock onto interactive elements like a viewfinder focus box. The brackets
+// breathe, rotate on press, and frame a tiny center tick + live coordinate
+// readout. Desktop / fine-pointer only; respects reduced-motion.
 function CustomCursor() {
   const reduce = useReducedMotion();
-  const x = useMotionValue(-100);
-  const y = useMotionValue(-100);
-  const ringX = useSpring(x, { stiffness: 380, damping: 30, mass: .6 });
-  const ringY = useSpring(y, { stiffness: 380, damping: 30, mass: .6 });
-  const [hovering, setHovering] = useState(false);
+  const x = useMotionValue(-200);
+  const y = useMotionValue(-200);
+  const fx = useSpring(x, { stiffness: 700, damping: 40, mass: .5 });
+  const fy = useSpring(y, { stiffness: 700, damping: 40, mass: .5 });
+  const size = useSpring(34, { stiffness: 300, damping: 26 });
+  const [locked, setLocked] = useState(false);
   const [down, setDown] = useState(false);
   const [visible, setVisible] = useState(false);
+  const [coords, setCoords] = useState("0000 · 0000");
 
   useEffect(() => {
     if (reduce || typeof window === "undefined") return;
     if (window.matchMedia("(pointer: coarse)").matches) return;
+    const pad = (n: number) => String(Math.round(n)).padStart(4, "0");
     const move = (e: MouseEvent) => {
       x.set(e.clientX); y.set(e.clientY); setVisible(true);
+      setCoords(`${pad(e.clientX)} · ${pad(e.clientY)}`);
       const el = e.target;
-      setHovering(el instanceof Element && !!el.closest("a, button, [role=button], input, textarea, label, [data-cursor]"));
+      const hit = el instanceof Element ? el.closest("a, button, [role=button], input, textarea, label, [data-cursor]") : null;
+      setLocked(!!hit);
+      size.set(hit ? Math.min(Math.max(hit.getBoundingClientRect().width, 44), 120) : 34);
     };
     const onDown = () => setDown(true);
     const onUp = () => setDown(false);
@@ -307,12 +315,25 @@ function CustomCursor() {
       document.removeEventListener("mouseleave", onLeave);
       document.documentElement.classList.remove("custom-cursor");
     };
-  }, [reduce, x, y]);
+  }, [reduce, x, y, size]);
 
   if (reduce) return null;
-  return <div className="pointer-events-none fixed inset-0 z-[100] hidden md:block" aria-hidden style={{ opacity: visible ? 1 : 0, transition: "opacity .25s ease", mixBlendMode: "difference" }}>
-    <motion.div className="absolute h-2 w-2 -ml-1 -mt-1 rounded-full bg-[#f4f0e2]" style={{ x, y }} animate={{ scale: down ? .5 : 1 }} transition={{ type: "spring", stiffness: 500, damping: 28 }} />
-    <motion.div className="absolute h-10 w-10 -ml-5 -mt-5 rounded-full border border-[#f4f0e2]" style={{ x: ringX, y: ringY }} animate={{ scale: down ? .85 : hovering ? 1.9 : 1, opacity: hovering ? 1 : .55 }} transition={{ type: "spring", stiffness: 280, damping: 22 }} />
+  const stroke = locked ? "#d89b57" : "#f4f0e2";
+  const corner = "absolute h-3.5 w-3.5 border-[1.5px]";
+  return <div className="pointer-events-none fixed inset-0 z-[100] hidden md:block" aria-hidden style={{ opacity: visible ? 1 : 0, transition: "opacity .25s ease" }}>
+    {/* exact-tracking center tick */}
+    <motion.div className="absolute -ml-px -mt-px h-0.5 w-0.5 rounded-full" style={{ x, y, background: stroke }} animate={{ scale: down ? 2.4 : 1 }} transition={{ type: "spring", stiffness: 500, damping: 24 }} />
+    {/* lagging focus frame */}
+    <motion.div className="absolute left-0 top-0" style={{ x: fx, y: fy }}>
+      <motion.div className="absolute -translate-x-1/2 -translate-y-1/2" style={{ width: size, height: size }} animate={{ rotate: down ? 45 : locked ? 0 : 0, scale: down ? .82 : 1 }} transition={{ type: "spring", stiffness: 320, damping: 22 }}>
+        <span className={`${corner} left-0 top-0 border-b-0 border-r-0`} style={{ borderColor: stroke }} />
+        <span className={`${corner} right-0 top-0 border-b-0 border-l-0`} style={{ borderColor: stroke }} />
+        <span className={`${corner} bottom-0 left-0 border-r-0 border-t-0`} style={{ borderColor: stroke }} />
+        <span className={`${corner} bottom-0 right-0 border-l-0 border-t-0`} style={{ borderColor: stroke }} />
+      </motion.div>
+      {/* live coordinate readout, fades in on lock */}
+      <motion.span className="mono absolute whitespace-nowrap text-[9px] tracking-[.2em]" style={{ color: stroke, left: 14, top: 12 }} animate={{ opacity: locked ? .85 : 0 }} transition={{ duration: .2 }}>{coords}</motion.span>
+    </motion.div>
   </div>;
 }
 
