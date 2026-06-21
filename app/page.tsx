@@ -229,21 +229,24 @@ function About({ content, lang }: { content: SiteContent; lang: Lang }) {
 }
 
 function Tools({ content, lang }: { content: SiteContent; lang: Lang }) {
-  return <section id="tools" className="py-24"><div className="container">
-    <Reveal><div className="mx-auto mb-14 max-w-2xl text-center"><h2 className="display text-[clamp(2.4rem,4.5vw,3.8rem)] font-bold leading-[1.04] tracking-[-.025em]">{t(content.toolsIntro.title, lang)}</h2><p className="mt-4 text-lg text-[#e1e0cc]/45">{t(content.toolsIntro.subtitle, lang)}</p></div></Reveal>
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-      <Reveal><div className="group relative min-h-[520px] overflow-hidden rounded-[1.6rem] border border-white/10 bg-[#101010]"><div className="absolute inset-0"><VideoOrImage src={content.toolsIntro.canvasShowreel} poster={content.toolsIntro.canvasPoster} /></div><div className="absolute inset-0 bg-gradient-to-t from-black via-black/25 to-transparent" /><h3 className="absolute bottom-7 left-6 max-w-[13rem] text-2xl font-bold tracking-[-.05em]">{t(content.toolsIntro.canvasTitle, lang)}</h3></div></Reveal>
-      {content.tools.map((tool, i) => <ToolCardView key={tool.id} tool={tool} lang={lang} delay={(i + 1) * .06} />)}
-    </div>
-  </div></section>;
-}
-function ToolCardView({ tool, lang, delay }: { tool: ToolCard; lang: Lang; delay: number }) {
-  const [hover, setHover] = useState(false);
-  return <Reveal delay={delay}><article onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} className="group relative min-h-[520px] overflow-hidden rounded-[1.6rem] border border-white/10 bg-[#191919] p-7 transition duration-500 hover:-translate-y-2 hover:border-[#d89b57]/35">
-    <AnimatePresence>{hover && <motion.video key="hover" src={tool.showreel} poster={tool.poster} autoPlay muted loop playsInline className="absolute inset-0 h-full w-full object-cover" initial={{ opacity: 0, scale: 1.06 }} animate={{ opacity: .58, scale: 1 }} exit={{ opacity: 0, scale: 1.06 }} transition={{ duration: .6, ease }} />}</AnimatePresence>
-    <div className="absolute inset-0 bg-gradient-to-t from-black via-[#111]/85 to-[#111]/40" />
-    <div className="relative z-10 flex h-full flex-col"><div className="mb-8">{iconMap[tool.icon]}</div><h3 className="text-2xl font-bold leading-none tracking-[-.05em]">{t(tool.title, lang)}</h3><p className="mt-4 text-sm leading-6 text-[#e1e0cc]/55">{t(tool.subtitle, lang)}</p><ul className="mt-8 space-y-4 text-xs leading-5 text-[#e1e0cc]/62">{t(tool.checklist, lang).map(item => <li key={item} className="flex gap-3"><span className="text-[#e1e0cc]">✓</span>{item}</li>)}</ul><a href={tool.link} className="mt-auto inline-flex items-center gap-2 text-xs font-bold text-[#e1e0cc]/85 hover:text-white">{lang === "ru" ? "Подробнее" : "Learn more"} <ArrowUpRight className="h-3.5 w-3.5" /></a></div>
-  </article></Reveal>;
+  return <section id="tools" className="container py-14 md:py-20">
+    <Reveal><div className="panel rounded-[2rem] p-7 md:rounded-[2.4rem] md:p-12">
+      <div className="mb-10 flex flex-col gap-4 md:mb-12 md:flex-row md:items-end md:justify-between">
+        <div>
+          <p className="mb-3 mono text-[10px] font-medium uppercase tracking-[.3em] text-[#e1e0cc]/55">{lang === "ru" ? "Программы" : "Programs"}</p>
+          <h2 className="display text-[clamp(2.1rem,3.8vw,3.4rem)] font-bold leading-[1] tracking-[-.02em]">{t(content.toolsIntro.title, lang)}</h2>
+        </div>
+        <p className="max-w-xs text-sm leading-6 text-[#e1e0cc]/45 md:text-right">{t(content.toolsIntro.subtitle, lang)}</p>
+      </div>
+      <div className="grid grid-cols-1 divide-y divide-white/10 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+        {content.tools.map(tool => <div key={tool.id} className="flex flex-col items-center px-6 py-7 text-center sm:py-1">
+          <div className="mb-5 flex h-11 items-center justify-center">{iconMap[tool.icon]}</div>
+          <h3 className="text-base font-bold tracking-[-.02em]">{t(tool.title, lang)}</h3>
+          <p className="mt-2 max-w-[15rem] text-xs leading-5 text-[#e1e0cc]/50">{t(tool.subtitle, lang)}</p>
+        </div>)}
+      </div>
+    </div></Reveal>
+  </section>;
 }
 
 function Collaborators({ content, lang }: { content: SiteContent; lang: Lang }) {
