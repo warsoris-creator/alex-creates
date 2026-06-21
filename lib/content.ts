@@ -39,8 +39,8 @@ const videoB = "https://www.w3schools.com/html/mov_bbb.mp4";
 
 export const defaultContent: SiteContent = {
   nav: {
-    en: ["Our story", "Collective", "Workshops", "Programs", "Inquiries"],
-    ru: ["История", "Команда", "Воркшопы", "Программы", "Заявки"],
+    en: ["Collective", "Workshops", "Programs", "Inquiries"],
+    ru: ["Команда", "Воркшопы", "Программы", "Заявки"],
   },
   hero: {
     title: "alex.creates*",
@@ -131,5 +131,5 @@ export const defaultContent: SiteContent = {
   },
 };
 
-export const storageKey = "alex.creates.content.v5";
+export const storageKey = "alex.creates.content.v6";
 export const languageKey = "alex.creates.lang";
