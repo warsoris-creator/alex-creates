@@ -230,7 +230,9 @@ function EField({ label, value, onChange, textarea = false, placeholder = "" }: 
 }
 
 // Drag-drop / click / paste-URL media uploader. Real upload goes to /api/upload.
-function MediaDrop({ label, value, kind, onChange }: { label: string; value: string; kind: "image" | "video"; onChange: (url: string) => void }) {
+// `ratio` keeps the preview in the same shape as the page (e.g. 9:16 for vertical
+// videos); `round` renders a circular avatar dropzone.
+function MediaDrop({ label, value, kind, onChange, ratio = "aspect-video", round = false }: { label: string; value: string; kind: "image" | "video"; onChange: (url: string) => void; ratio?: string; round?: boolean }) {
   const edit = useEdit();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -240,16 +242,17 @@ function MediaDrop({ label, value, kind, onChange }: { label: string; value: str
     setBusy(true); setErr("");
     try { onChange(await edit.upload(file)); } catch { setErr("Upload failed"); } finally { setBusy(false); }
   }
+  const box = round ? "mx-auto h-24 w-24 rounded-full" : `w-full ${ratio} rounded-xl`;
   return <div className="mb-3">
     <p className="mb-1.5 text-xs text-[#e1e0cc]/60">{label}</p>
     <div onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); handle(e.dataTransfer.files?.[0]); }} onClick={() => ref.current?.click()}
-      className="relative flex aspect-video cursor-pointer items-center justify-center overflow-hidden rounded-xl border border-dashed border-white/20 bg-black/40 transition hover:border-[#d89b57]/50">
+      className={`relative flex cursor-pointer items-center justify-center overflow-hidden border border-dashed border-white/20 bg-black/40 transition hover:border-[#d89b57]/50 ${box}`}>
       {value ? (kind === "video"
         ? <video src={value} muted loop playsInline autoPlay className="absolute inset-0 h-full w-full object-cover opacity-70" />
         : <img src={value} alt="" className="absolute inset-0 h-full w-full object-cover opacity-70" />) : null}
-      <div className="relative z-10 flex flex-col items-center gap-1 rounded-lg bg-black/55 px-3 py-2 text-center text-xs text-[#e1e0cc]/85 backdrop-blur">
-        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-        <span>{busy ? "Uploading…" : "Drop file or click"}</span>
+      <div className={`relative z-10 flex flex-col items-center gap-1 rounded-lg bg-black/55 text-center text-[#e1e0cc]/85 backdrop-blur ${round ? "px-1.5 py-1 text-[9px]" : "px-3 py-2 text-xs"}`}>
+        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className={round ? "h-3 w-3" : "h-4 w-4"} />}
+        <span>{busy ? "Uploading…" : round ? "Photo" : "Drop file or click"}</span>
       </div>
       <input ref={ref} type="file" accept={kind === "video" ? "video/*" : "image/*"} className="hidden" onChange={e => handle(e.target.files?.[0])} />
     </div>
@@ -271,9 +274,9 @@ function LinksEditor({ links, onChange }: { links: { label: string; url: string 
 }
 
 // Popover shell — parent wraps this in <AnimatePresence> and renders when open.
-function EditShell({ title, onClose, onDelete, children }: { title: string; onClose: () => void; onDelete?: () => void; children: React.ReactNode }) {
+function EditShell({ title, onClose, onDelete, children, wide = false }: { title: string; onClose: () => void; onDelete?: () => void; children: React.ReactNode; wide?: boolean }) {
   return <motion.div className="fixed inset-0 z-[80] grid place-items-center bg-black/70 p-4 backdrop-blur-xl" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
-    <motion.div onClick={e => e.stopPropagation()} className="panel max-h-[88vh] w-full max-w-md overflow-auto rounded-[1.4rem] p-5" initial={{ y: 20, scale: .97, opacity: 0 }} animate={{ y: 0, scale: 1, opacity: 1 }} exit={{ y: 16, scale: .98, opacity: 0 }} transition={{ type: "spring", stiffness: 300, damping: 28 }}>
+    <motion.div onClick={e => e.stopPropagation()} className={`panel max-h-[88vh] w-full overflow-auto rounded-[1.4rem] p-5 ${wide ? "max-w-3xl" : "max-w-md"}`} initial={{ y: 20, scale: .97, opacity: 0 }} animate={{ y: 0, scale: 1, opacity: 1 }} exit={{ y: 16, scale: .98, opacity: 0 }} transition={{ type: "spring", stiffness: 300, damping: 28 }}>
       <div className="mb-4 flex items-center justify-between"><h3 className="font-bold">{title}</h3><button onClick={onClose} className="rounded-full bg-white/10 p-1.5 hover:bg-white/20"><X className="h-4 w-4" /></button></div>
       {children}
       {onDelete && <button onClick={onDelete} className="mt-4 inline-flex items-center gap-2 rounded-full bg-red-500/15 px-4 py-2 text-xs font-medium text-red-200 transition hover:bg-red-500/25"><Trash2 className="h-3.5 w-3.5" />Delete</button>}
@@ -454,18 +457,25 @@ function PersonEditPopover({ person, idx, onClose }: { person: Collaborator; idx
   const edit = useEdit()!;
   const set = (f: string, v: unknown) => edit.update(`collaborators.${idx}.${f}`, v);
   const del = () => { edit.setContent(prev => ({ ...prev, collaborators: prev.collaborators.filter(p => p.id !== person.id) })); onClose(); };
-  return <EditShell title="Edit collaborator" onClose={onClose} onDelete={del}>
-    <MediaDrop label="Preview photo" kind="image" value={person.image} onChange={v => set("image", v)} />
-    <MediaDrop label="Card showreel (plays after preview)" kind="video" value={person.showreel} onChange={v => set("showreel", v)} />
-    <MediaDrop label="Detail video (in the card)" kind="video" value={person.detailVideo} onChange={v => set("detailVideo", v)} />
-    <EField label="Name (EN)" value={person.name.en} onChange={v => set("name.en", v)} />
-    <EField label="Name (RU)" value={person.name.ru} onChange={v => set("name.ru", v)} />
-    <EField label="Text under name (EN)" value={person.role.en} onChange={v => set("role.en", v)} />
-    <EField label="Text under name (RU)" value={person.role.ru} onChange={v => set("role.ru", v)} />
-    <EField label="Studio / company" value={person.studio} onChange={v => set("studio", v)} />
-    <EField label="Bio (EN)" value={person.bio.en} onChange={v => set("bio.en", v)} textarea />
-    <EField label="Bio (RU)" value={person.bio.ru} onChange={v => set("bio.ru", v)} textarea />
-    <LinksEditor links={person.links} onChange={l => set("links", l)} />
+  return <EditShell title="Edit collaborator" onClose={onClose} onDelete={del} wide>
+    <div className="grid gap-5 md:grid-cols-[230px_1fr]">
+      <div>
+        {/* preview photo in the same portrait shape as the card */}
+        <MediaDrop label="Preview photo" kind="image" value={person.image} onChange={v => set("image", v)} ratio="aspect-[.9]" />
+        <MediaDrop label="Card showreel (plays after preview)" kind="video" value={person.showreel} onChange={v => set("showreel", v)} ratio="aspect-[.9]" />
+        <MediaDrop label="Detail video (in the card)" kind="video" value={person.detailVideo} onChange={v => set("detailVideo", v)} />
+      </div>
+      <div>
+        <EField label="Name (EN)" value={person.name.en} onChange={v => set("name.en", v)} />
+        <EField label="Name (RU)" value={person.name.ru} onChange={v => set("name.ru", v)} />
+        <EField label="Text under name (EN)" value={person.role.en} onChange={v => set("role.en", v)} />
+        <EField label="Text under name (RU)" value={person.role.ru} onChange={v => set("role.ru", v)} />
+        <EField label="Studio / company" value={person.studio} onChange={v => set("studio", v)} />
+        <EField label="Bio (EN)" value={person.bio.en} onChange={v => set("bio.en", v)} textarea />
+        <EField label="Bio (RU)" value={person.bio.ru} onChange={v => set("bio.ru", v)} textarea />
+        <LinksEditor links={person.links} onChange={l => set("links", l)} />
+      </div>
+    </div>
   </EditShell>;
 }
 
@@ -571,24 +581,42 @@ function WorkEditPopover({ work, idx, onClose }: { work: WorkItem; idx: number; 
   const edit = useEdit()!;
   const set = (field: string, value: unknown) => edit.update(`works.${idx}.${field}`, value);
   const del = () => { edit.setContent(prev => ({ ...prev, works: prev.works.filter(w => w.id !== work.id) })); onClose(); };
-  return <EditShell title="Edit video" onClose={onClose} onDelete={del}>
-    <div className="mb-3">
-      <p className="mb-1.5 text-xs text-[#e1e0cc]/60">Format</p>
+  const portrait = work.orientation === "portrait";
+  const ratio = portrait ? "aspect-[9/16]" : "aspect-video";
+  return <EditShell title="Edit video" onClose={onClose} onDelete={del} wide>
+    <div className="mb-5">
+      <p className="mb-1.5 text-xs text-[#e1e0cc]/60">Format — how it shows in the grid</p>
       <div className="flex gap-2">
-        {(["landscape", "portrait"] as const).map(o => <button key={o} onClick={() => set("orientation", o)} className={`flex-1 rounded-lg border px-3 py-2 text-sm transition ${work.orientation === o ? "border-[#d89b57] bg-[#d89b57]/15 text-white" : "border-white/10 text-[#e1e0cc]/70 hover:bg-white/5"}`}>{o === "portrait" ? "9:16 vertical" : "16:9 horizontal"}</button>)}
+        {(["landscape", "portrait"] as const).map(o => <button key={o} onClick={() => set("orientation", o)} className={`flex flex-1 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm transition ${work.orientation === o ? "border-[#d89b57] bg-[#d89b57]/15 text-white" : "border-white/10 text-[#e1e0cc]/70 hover:bg-white/5"}`}><span className={`rounded-[3px] border border-current ${o === "portrait" ? "h-4 w-2.5" : "h-2.5 w-4"}`} />{o === "portrait" ? "9:16 vertical" : "16:9 horizontal"}</button>)}
       </div>
     </div>
-    <MediaDrop label="Video" kind="video" value={work.video} onChange={v => set("video", v)} />
-    <MediaDrop label="Poster (optional)" kind="image" value={work.poster} onChange={v => set("poster", v)} />
-    <MediaDrop label="Client avatar" kind="image" value={work.avatar} onChange={v => set("avatar", v)} />
-    <EField label="Client name (EN)" value={work.client.en} onChange={v => set("client.en", v)} />
-    <EField label="Client name (RU)" value={work.client.ru} onChange={v => set("client.ru", v)} />
-    <EField label="Views" value={work.views} onChange={v => set("views", v)} placeholder="1.2M" />
-    <EField label="Title (EN)" value={work.title.en} onChange={v => set("title.en", v)} />
-    <EField label="Title (RU)" value={work.title.ru} onChange={v => set("title.ru", v)} />
-    <EField label="Description (EN)" value={work.description.en} onChange={v => set("description.en", v)} textarea />
-    <EField label="Description (RU)" value={work.description.ru} onChange={v => set("description.ru", v)} textarea />
-    <LinksEditor links={work.links} onChange={l => set("links", l)} />
+    <div className={`grid gap-5 ${portrait ? "md:grid-cols-[230px_1fr]" : "md:grid-cols-[1.5fr_1fr]"}`}>
+      <div>
+        {/* WYSIWYG preview: same shape + overlays as the live card */}
+        <div className={`relative mb-3 overflow-hidden rounded-[1.2rem] border border-white/10 bg-black ${ratio}`}>
+          {work.video ? <video src={work.video} poster={work.poster} muted loop playsInline autoPlay className="absolute inset-0 h-full w-full object-cover" />
+            : work.poster ? <img src={work.poster} alt="" className="absolute inset-0 h-full w-full object-cover" /> : null}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-black/25" />
+          <div className="absolute right-2 top-2 scale-90 origin-top-right"><ViewsAvatar views={work.views || "0"} avatar={work.avatar} name={work.client.en} /></div>
+          <span className="absolute bottom-2 left-3 right-3 truncate text-xs font-bold drop-shadow">{work.title.en}</span>
+        </div>
+        <MediaDrop label="Video" kind="video" value={work.video} onChange={v => set("video", v)} ratio={ratio} />
+        <MediaDrop label="Poster (shown before play)" kind="image" value={work.poster} onChange={v => set("poster", v)} ratio={ratio} />
+      </div>
+      <div>
+        <div className="mb-3 flex items-end gap-3">
+          <div className="shrink-0"><MediaDrop label="Avatar" kind="image" value={work.avatar} onChange={v => set("avatar", v)} round /></div>
+          <div className="min-w-0 flex-1"><EField label="Views" value={work.views} onChange={v => set("views", v)} placeholder="1.2M" /></div>
+        </div>
+        <EField label="Client name (EN)" value={work.client.en} onChange={v => set("client.en", v)} />
+        <EField label="Client name (RU)" value={work.client.ru} onChange={v => set("client.ru", v)} />
+        <EField label="Title (EN)" value={work.title.en} onChange={v => set("title.en", v)} />
+        <EField label="Title (RU)" value={work.title.ru} onChange={v => set("title.ru", v)} />
+        <EField label="Description (EN)" value={work.description.en} onChange={v => set("description.en", v)} textarea />
+        <EField label="Description (RU)" value={work.description.ru} onChange={v => set("description.ru", v)} textarea />
+        <LinksEditor links={work.links} onChange={l => set("links", l)} />
+      </div>
+    </div>
   </EditShell>;
 }
 
