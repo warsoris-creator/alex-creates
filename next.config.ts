@@ -11,6 +11,8 @@ const nextConfig: NextConfig = {
   assetPrefix: repoBase,
   images: { unoptimized: true },
   trailingSlash: true,
+  // Hide the Next.js dev indicator badge (the "N" logo) in the bottom corner.
+  devIndicators: false,
 };
 
 export default nextConfig;

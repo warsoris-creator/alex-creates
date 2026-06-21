@@ -13,15 +13,21 @@
 }
 
 * { box-sizing: border-box; }
-html { scroll-behavior: smooth; background: var(--black); }
-body {
-  margin: 0;
-  color: var(--cream);
+/* Background lives on <html> so the transparent scrollbar track reveals the same
+   page gradient instead of a flat near-black gutter. */
+html {
+  scroll-behavior: smooth;
   background:
     radial-gradient(120% 80% at 78% -12%, rgba(216, 155, 87, 0.16), transparent 55%),
     radial-gradient(90% 70% at 8% 48%, rgba(225, 224, 204, 0.05), transparent 55%),
     linear-gradient(180deg, transparent 58%, rgba(0, 0, 0, 0.55) 100%),
     var(--black);
+  background-attachment: fixed;
+}
+body {
+  margin: 0;
+  color: var(--cream);
+  background: transparent;
   font-family: var(--font-sans), system-ui, Arial, sans-serif;
   font-feature-settings: "ss01", "cv01";
   -webkit-font-smoothing: antialiased;
