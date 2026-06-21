@@ -292,9 +292,9 @@ function AddTile({ onClick, label, className = "" }: { onClick: () => void; labe
 
 // Drag-to-reorder wrapper (dnd-kit). Listeners on the whole tile; activation
 // distance lets inner buttons still be clicked.
-function SortableItem({ id, children, className = "" }: { id: string; children: React.ReactNode; className?: string }) {
+function SortableItem({ id, children, className = "", style: styleProp }: { id: string; children: React.ReactNode; className?: string; style?: React.CSSProperties }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
-  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? .55 : 1, zIndex: isDragging ? 30 : undefined };
+  const style: React.CSSProperties = { ...styleProp, transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? .55 : 1, zIndex: isDragging ? 30 : undefined };
   return <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={`touch-none ${className}`}>{children}</div>;
 }
 
@@ -513,6 +513,16 @@ function ViewsAvatar({ views, avatar, name, size = "card" }: { views: string; av
   </div>;
 }
 
+// Masonry grid tuning. Small auto-row unit + per-item row-span gives a real
+// multi-column grid where verticals (9:16) are tall, horizontals (16:9) short,
+// and items pack densely so a horizontal can sit under a vertical in a column.
+const ROW_UNIT = 8, GRID_GAP = 12;
+function spanFor(orientation: "landscape" | "portrait", colW: number) {
+  if (!colW) return undefined;
+  const h = orientation === "portrait" ? colW * 16 / 9 : colW * 9 / 16;
+  return Math.max(1, Math.round((h + GRID_GAP) / (ROW_UNIT + GRID_GAP)));
+}
+
 function Work({ content, lang }: { content: SiteContent; lang: Lang }) {
   const edit = useEdit();
   const editMode = !!edit?.editMode;
@@ -522,6 +532,24 @@ function Work({ content, lang }: { content: SiteContent; lang: Lang }) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
   const works = content.works;
   const editingWork = works.find(w => w.id === editingId) || null;
+
+  // Measure column width so each card's row-span yields the correct aspect.
+  const [grid, setGrid] = useState<HTMLDivElement | null>(null);
+  const [cols, setCols] = useState(3);
+  const [colW, setColW] = useState(360);
+  useEffect(() => {
+    if (!grid) return;
+    const compute = () => {
+      const c = window.innerWidth >= 768 ? 3 : 2;
+      setCols(c);
+      setColW((grid.clientWidth - GRID_GAP * (c - 1)) / c);
+    };
+    compute();
+    const ro = new ResizeObserver(compute);
+    ro.observe(grid);
+    return () => ro.disconnect();
+  }, [grid]);
+  const gridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: `repeat(${cols}, minmax(0,1fr))`, gridAutoRows: `${ROW_UNIT}px`, gridAutoFlow: "row dense", gap: `${GRID_GAP}px` };
 
   function onDragEnd(e: DragEndEvent) {
     const { active, over } = e;
@@ -549,14 +577,16 @@ function Work({ content, lang }: { content: SiteContent; lang: Lang }) {
     {editMode
       ? <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
           <SortableContext items={works.map(w => w.id)} strategy={rectSortingStrategy}>
-            <div className="[column-fill:balance] [column-gap:0.75rem] sm:columns-2 lg:columns-3">
-              {works.map(w => <EditWorkCard key={w.id} work={w} lang={lang} onEdit={() => setEditingId(w.id)} />)}
-              <div className="mb-3 break-inside-avoid"><AddTile onClick={addWork} label={lang === "ru" ? "Добавить видео" : "Add video"} className="aspect-video" /></div>
+            <div ref={setGrid} style={gridStyle}>
+              {works.map(w => <SortableItem key={w.id} id={w.id} style={{ gridRow: `span ${spanFor(w.orientation, colW)}` }}><EditWorkCard work={w} lang={lang} onEdit={() => setEditingId(w.id)} /></SortableItem>)}
+              <div style={{ gridRow: `span ${spanFor("landscape", colW)}` }}><AddTile onClick={addWork} label={lang === "ru" ? "Добавить видео" : "Add video"} className="h-full" /></div>
             </div>
           </SortableContext>
         </DndContext>
-      : <div className="[column-fill:balance] [column-gap:0.75rem] sm:columns-2 lg:columns-3 [&>*]:mb-3">
-          {works.map(w => <WorkCard key={w.id} work={w} lang={lang} onClick={() => setSelected(w)} />)}
+      : <div ref={setGrid} style={gridStyle}>
+          {works.map(w => <div key={w.id} style={{ gridRow: `span ${spanFor(w.orientation, colW)}` }}>
+            <WorkCard work={w} lang={lang} onClick={() => setSelected(w)} />
+          </div>)}
         </div>}
 
     <WorkModal work={selected} lang={lang} onClose={() => setSelected(null)} />
@@ -568,17 +598,14 @@ function Work({ content, lang }: { content: SiteContent; lang: Lang }) {
 // Edit-mode card — identical to the public WorkCard (real orientation, masonry)
 // plus a pencil and drag-to-reorder.
 function EditWorkCard({ work, lang, onEdit }: { work: WorkItem; lang: Lang; onEdit: () => void }) {
-  const ratio = work.orientation === "portrait" ? "aspect-[9/16]" : "aspect-video";
-  return <SortableItem id={work.id} className="mb-3 break-inside-avoid">
-    <div className={`group relative w-full overflow-hidden rounded-[1.3rem] border border-white/10 bg-[#111] ${ratio}`}>
-      {work.poster ? <img src={work.poster} alt="" className="absolute inset-0 h-full w-full object-cover" />
-        : work.video ? <video src={work.video} muted loop playsInline className="absolute inset-0 h-full w-full object-cover" /> : null}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-black/25" />
-      <div className="absolute right-3 top-3 z-10"><ViewsAvatar views={work.views} avatar={work.avatar} name={t(work.client, lang)} /></div>
-      <span className="absolute bottom-3 left-3 right-12 truncate text-sm font-bold tracking-[-.02em] drop-shadow">{t(work.title, lang)}</span>
-      <EditButton className="absolute bottom-3 right-3" onClick={onEdit} />
-    </div>
-  </SortableItem>;
+  return <div className="group relative h-full w-full overflow-hidden rounded-[1.3rem] border border-white/10 bg-[#111]">
+    {work.poster ? <img src={work.poster} alt="" className="absolute inset-0 h-full w-full object-cover" />
+      : work.video ? <video src={work.video} muted loop playsInline className="absolute inset-0 h-full w-full object-cover" /> : null}
+    <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-black/25" />
+    <div className="absolute right-3 top-3 z-10"><ViewsAvatar views={work.views} avatar={work.avatar} name={t(work.client, lang)} /></div>
+    <span className="absolute bottom-3 left-3 right-12 truncate text-sm font-bold tracking-[-.02em] drop-shadow">{t(work.title, lang)}</span>
+    <EditButton className="absolute bottom-3 right-3" onClick={onEdit} />
+  </div>;
 }
 
 function WorkEditPopover({ work, idx, onClose }: { work: WorkItem; idx: number; onClose: () => void }) {
@@ -639,17 +666,14 @@ function IntroEditPopover({ content, onClose }: { content: SiteContent; onClose:
 
 function WorkCard({ work, lang, onClick }: { work: WorkItem; lang: Lang; onClick: () => void }) {
   const [hover, setHover] = useState(false);
-  const ratio = work.orientation === "portrait" ? "aspect-[9/16]" : "aspect-video";
-  return <Reveal className="break-inside-avoid">
-    <button onClick={onClick} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} className={`group relative block w-full overflow-hidden rounded-[1.3rem] border border-white/10 bg-[#111] text-left transition duration-500 hover:-translate-y-1 hover:border-white/25 ${ratio}`}>
+  return <button onClick={onClick} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} className="group relative block h-full w-full overflow-hidden rounded-[1.3rem] border border-white/10 bg-[#111] text-left transition duration-500 hover:-translate-y-1 hover:border-white/25">
       <img src={work.poster} alt={t(work.title, lang)} className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-[1.04]" />
       <AnimatePresence>{hover && <motion.video key="v" src={work.video} poster={work.poster} autoPlay muted loop playsInline className="absolute inset-0 h-full w-full object-cover" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: .8, ease }} />}</AnimatePresence>
       <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-black/25" />
       <div className="absolute right-3 top-3 z-10"><ViewsAvatar views={work.views} avatar={work.avatar} name={t(work.client, lang)} /></div>
       <span className="absolute bottom-3 left-3 right-3 z-10 truncate text-sm font-bold tracking-[-.02em] drop-shadow">{t(work.title, lang)}</span>
       <span className="absolute left-1/2 top-1/2 z-10 grid h-12 w-12 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-black/45 opacity-0 backdrop-blur-md transition duration-500 group-hover:opacity-100"><Play className="h-5 w-5 translate-x-px fill-current" /></span>
-    </button>
-  </Reveal>;
+  </button>;
 }
 
 function WorkModal({ work, lang, onClose }: { work: WorkItem | null; lang: Lang; onClose: () => void }) {
