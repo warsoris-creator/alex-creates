@@ -549,9 +549,9 @@ function Work({ content, lang }: { content: SiteContent; lang: Lang }) {
     {editMode
       ? <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
           <SortableContext items={works.map(w => w.id)} strategy={rectSortingStrategy}>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-              {works.map(w => <SortableItem key={w.id} id={w.id}><WorkTile work={w} lang={lang} onEdit={() => setEditingId(w.id)} /></SortableItem>)}
-              <AddTile onClick={addWork} label={lang === "ru" ? "Добавить видео" : "Add video"} className="aspect-video" />
+            <div className="[column-fill:balance] [column-gap:0.75rem] sm:columns-2 lg:columns-3">
+              {works.map(w => <EditWorkCard key={w.id} work={w} lang={lang} onEdit={() => setEditingId(w.id)} />)}
+              <div className="mb-3 break-inside-avoid"><AddTile onClick={addWork} label={lang === "ru" ? "Добавить видео" : "Add video"} className="aspect-video" /></div>
             </div>
           </SortableContext>
         </DndContext>
@@ -565,16 +565,20 @@ function Work({ content, lang }: { content: SiteContent; lang: Lang }) {
   </div></section>;
 }
 
-function WorkTile({ work, lang, onEdit }: { work: WorkItem; lang: Lang; onEdit: () => void }) {
-  return <div className="group relative aspect-video overflow-hidden rounded-[1.3rem] border border-white/10 bg-[#111]">
-    {work.poster ? <img src={work.poster} alt="" className="absolute inset-0 h-full w-full object-cover" />
-      : work.video ? <video src={work.video} muted loop playsInline className="absolute inset-0 h-full w-full object-cover" /> : null}
-    <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
-    <span className="absolute left-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-medium backdrop-blur">{work.orientation === "portrait" ? "9:16" : "16:9"}</span>
-    <div className="absolute right-2 top-2 scale-90 origin-top-right"><ViewsAvatar views={work.views} avatar={work.avatar} name={t(work.client, lang)} /></div>
-    <span className="absolute bottom-2 left-3 right-12 truncate text-xs font-bold drop-shadow">{t(work.title, lang)}</span>
-    <EditButton className="absolute bottom-2 right-2 h-8 w-8" onClick={onEdit} />
-  </div>;
+// Edit-mode card — identical to the public WorkCard (real orientation, masonry)
+// plus a pencil and drag-to-reorder.
+function EditWorkCard({ work, lang, onEdit }: { work: WorkItem; lang: Lang; onEdit: () => void }) {
+  const ratio = work.orientation === "portrait" ? "aspect-[9/16]" : "aspect-video";
+  return <SortableItem id={work.id} className="mb-3 break-inside-avoid">
+    <div className={`group relative w-full overflow-hidden rounded-[1.3rem] border border-white/10 bg-[#111] ${ratio}`}>
+      {work.poster ? <img src={work.poster} alt="" className="absolute inset-0 h-full w-full object-cover" />
+        : work.video ? <video src={work.video} muted loop playsInline className="absolute inset-0 h-full w-full object-cover" /> : null}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-black/25" />
+      <div className="absolute right-3 top-3 z-10"><ViewsAvatar views={work.views} avatar={work.avatar} name={t(work.client, lang)} /></div>
+      <span className="absolute bottom-3 left-3 right-12 truncate text-sm font-bold tracking-[-.02em] drop-shadow">{t(work.title, lang)}</span>
+      <EditButton className="absolute bottom-3 right-3" onClick={onEdit} />
+    </div>
+  </SortableItem>;
 }
 
 function WorkEditPopover({ work, idx, onClose }: { work: WorkItem; idx: number; onClose: () => void }) {
