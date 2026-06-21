@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Manrope, Playfair_Display, JetBrains_Mono } from "next/font/google";
+import { Manrope, Playfair_Display, JetBrains_Mono, Unbounded } from "next/font/google";
 import "./globals.css";
 
 // Body / UI — modern geometric grotesk (Latin + Cyrillic).
@@ -27,6 +27,15 @@ const jetbrains = JetBrains_Mono({
   display: "swap",
 });
 
+// Russian display headings + numerals — bold rounded futuristic grotesk with
+// strong Cyrillic. Used only for RU (Playfair stays for the Latin wordmark).
+const unbounded = Unbounded({
+  subsets: ["latin", "cyrillic"],
+  weight: ["500", "600", "700", "800"],
+  variable: "--font-display-ru",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
   title: "alex.creates — Cinematic Video Editor Portfolio",
   description: "A dark cinematic portfolio for Aleksandr / alex.creates.",
@@ -34,7 +43,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${manrope.variable} ${playfair.variable} ${jetbrains.variable}`}>
+    <html lang="en" className={`${manrope.variable} ${playfair.variable} ${jetbrains.variable} ${unbounded.variable}`}>
       <body>{children}</body>
     </html>
   );
