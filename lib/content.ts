@@ -21,6 +21,19 @@ export type Collaborator = {
   detailVideo: string;
   links: { label: string; url: string }[];
 };
+// A portfolio video, shown in the "My work" grid. orientation drives the
+// 16:9 vs 9:16 layout in both the grid card and the opened detail card.
+export type WorkItem = {
+  id: string;
+  orientation: "landscape" | "portrait";
+  video: string;
+  poster: string;
+  avatar: string;
+  client: Localized;
+  views: string;
+  title: Localized;
+  description: Localized;
+};
 export type SiteContent = {
   nav: Record<Lang, string[]>;
   hero: { title: string; description: Localized; cta: Localized; media: string; poster: string; mediaType: "video" | "image" };
@@ -29,8 +42,8 @@ export type SiteContent = {
   tools: ToolCard[];
   collaboratorsIntro: { eyebrow: Localized; titlePrefix: Localized; titleAccent: Localized; body: Localized };
   collaborators: Collaborator[];
-  statsIntro: { eyebrow: Localized; titlePrefix: Localized; titleAccent: Localized; titleSuffix: Localized; body: Localized; cta: Localized; image: string };
-  stats: { id: string; value: number; suffix: string; label: Localized; description: Localized }[];
+  workIntro: { eyebrow: Localized; title: Localized; subtitle: Localized };
+  works: WorkItem[];
   contact: { eyebrow: Localized; title: Localized; body: Localized; name: Localized; email: Localized; message: Localized; submit: Localized; success: Localized; error: Localized };
 };
 
@@ -109,19 +122,18 @@ export const defaultContent: SiteContent = {
     { id: "david", name: { en: "David Lenz", ru: "Давид Ленц" }, role: { en: "Sound Designer", ru: "Саунд-дизайнер" }, studio: "SOUNDBED", bio: { en: "Sound designer crafting dense atmospheres, signature hits and cinematic silence.", ru: "Саунд-дизайнер, создающий плотные атмосферы, акценты и кинематографичную тишину." }, image: "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?q=80&w=1000&auto=format&fit=crop", showreel: videoA, detailVideo: videoA, links: [{ label: "Website", url: "https://example.com" }] },
     { id: "tobias", name: { en: "Tobias Brandt", ru: "Тобиас Брандт" }, role: { en: "Music Composer", ru: "Композитор" }, studio: "BRANDT AUDIO", bio: { en: "Composer pairing analog warmth with restrained modern tension.", ru: "Композитор, соединяющий аналоговое тепло со сдержанным современным напряжением." }, image: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?q=80&w=1000&auto=format&fit=crop&sat=-40", showreel: videoB, detailVideo: videoB, links: [{ label: "Instagram", url: "https://instagram.com/" }] },
   ],
-  statsIntro: {
-    eyebrow: { en: "By the numbers", ru: "В цифрах" },
-    titlePrefix: { en: "My work,", ru: "Моя работа," },
-    titleAccent: { en: "by the", ru: "в" },
-    titleSuffix: { en: "numbers.", ru: "цифрах." },
-    body: { en: "A quick look at the journey so far. Each number represents stories, people, and passion.", ru: "Короткий взгляд на путь. За каждой цифрой — истории, люди и вовлечённость." },
-    cta: { en: "Let’s create together", ru: "Создадим вместе" },
-    image: "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=1400&auto=format&fit=crop",
+  workIntro: {
+    eyebrow: { en: "Selected work", ru: "Работы" },
+    title: { en: "My work", ru: "Моя работа" },
+    subtitle: { en: "Films, promos and edits made for people and brands.", ru: "Фильмы, промо и монтаж для людей и брендов." },
   },
-  stats: [
-    { id: "years", value: 8, suffix: "+", label: { en: "Years of Experience", ru: "Лет опыта" }, description: { en: "Working on creative projects across short-form, branded, and emerging media.", ru: "Креативные проекты: короткий формат, бренды и новые медиа." } },
-    { id: "projects", value: 60, suffix: "+", label: { en: "Projects Completed", ru: "Завершённых проектов" }, description: { en: "From short films to commercials, music videos and experimental pieces.", ru: "От короткого метра до рекламы, клипов и экспериментов." } },
-    { id: "collabs", value: 25, suffix: "+", label: { en: "Trusted Collaborators", ru: "Надёжных коллабораций" }, description: { en: "Directors, studios, and creative minds I’ve had the honor to work alongside.", ru: "Режиссёры, студии и авторы, с которыми было ценно работать." } },
+  works: [
+    { id: "work-1", orientation: "landscape", video: videoA, poster: "https://images.unsplash.com/photo-1598550476439-6847785fcea6?q=80&w=1200&auto=format&fit=crop", avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=400&auto=format&fit=crop", client: { en: "Aurora Studios", ru: "Aurora Studios" }, views: "2.1M", title: { en: "Brand film — Aurora", ru: "Бренд-фильм — Aurora" }, description: { en: "A cinematic brand piece built on patient pacing, warm grade and tactile sound design.", ru: "Кинематографичный бренд-ролик: размеренный ритм, тёплый грейд и тактильный саунд-дизайн." } },
+    { id: "work-2", orientation: "portrait", video: videoB, poster: "https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?q=80&w=800&auto=format&fit=crop", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=400&auto=format&fit=crop", client: { en: "Mira Vey", ru: "Mira Vey" }, views: "860K", title: { en: "Music promo — vertical cut", ru: "Музыкальное промо — вертикаль" }, description: { en: "A fast vertical edit for social, mixing performance footage with abstract inserts.", ru: "Быстрый вертикальный монтаж для соцсетей: перформанс плюс абстрактные вставки." } },
+    { id: "work-3", orientation: "landscape", video: videoB, poster: "https://images.unsplash.com/photo-1485846234645-a62644f84728?q=80&w=1200&auto=format&fit=crop", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=400&auto=format&fit=crop", client: { en: "Northwind", ru: "Northwind" }, views: "540K", title: { en: "Commercial — Northwind", ru: "Реклама — Northwind" }, description: { en: "Product commercial with seamless transitions and a restrained commercial polish.", ru: "Рекламный ролик с плавными переходами и сдержанным коммерческим лоском." } },
+    { id: "work-4", orientation: "portrait", video: videoA, poster: "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?q=80&w=800&auto=format&fit=crop", avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=400&auto=format&fit=crop", client: { en: "Lena Ross", ru: "Lena Ross" }, views: "1.3M", title: { en: "Reel — short-form story", ru: "Reels — короткая история" }, description: { en: "A vertical short-form story crafted for hook, retention and a clean payoff.", ru: "Вертикальная короткая история, выстроенная на хуке, удержании и чистом финале." } },
+    { id: "work-5", orientation: "landscape", video: videoA, poster: "https://images.unsplash.com/photo-1536440136628-849c177e76a1?q=80&w=1200&auto=format&fit=crop", avatar: "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?q=80&w=400&auto=format&fit=crop", client: { en: "Atlas Films", ru: "Atlas Films" }, views: "3.4M", title: { en: "Short film — Atlas", ru: "Короткий метр — Atlas" }, description: { en: "A narrative short with grounded performances and a measured, contrasty look.", ru: "Нарративный короткий метр с честными актёрскими работами и выверенным контрастом." } },
+    { id: "work-6", orientation: "portrait", video: videoB, poster: "https://images.unsplash.com/photo-1502136969935-8d8eef54d77b?q=80&w=800&auto=format&fit=crop", avatar: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?q=80&w=400&auto=format&fit=crop", client: { en: "Soundbed", ru: "Soundbed" }, views: "420K", title: { en: "Promo — vertical teaser", ru: "Промо — вертикальный тизер" }, description: { en: "A punchy vertical teaser with kinetic type and a dense atmospheric mix.", ru: "Энергичный вертикальный тизер с кинетической типографикой и плотной атмосферой." } },
   ],
   contact: {
     eyebrow: { en: "Inquiries", ru: "Заявки" },
@@ -131,5 +143,5 @@ export const defaultContent: SiteContent = {
   },
 };
 
-export const storageKey = "alex.creates.content.v6";
+export const storageKey = "alex.creates.content.v7";
 export const languageKey = "alex.creates.lang";
