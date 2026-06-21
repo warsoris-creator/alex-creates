@@ -76,7 +76,7 @@ function useLanguage() {
   const [lang, setLang] = useState<Lang>("en");
   useEffect(() => {
     const saved = localStorage.getItem(languageKey);
-    if (saved === "ru" || saved === "en") setLang(saved);
+    if (saved === "ru" || saved === "en") { setLang(saved); document.documentElement.lang = saved; }
   }, []);
   const update = (next: Lang) => { setLang(next); localStorage.setItem(languageKey, next); document.documentElement.lang = next; };
   return [lang, update] as const;
@@ -216,9 +216,9 @@ function About({ content, lang }: { content: SiteContent; lang: Lang }) {
 
 function Tools({ content, lang }: { content: SiteContent; lang: Lang }) {
   return <section id="tools" className="py-24"><div className="container">
-    <Reveal><div className="mb-10 text-center"><h2 className="display text-[clamp(2rem,4vw,3.2rem)] font-bold tracking-[-.025em]">{t(content.toolsIntro.title, lang)}</h2><p className="text-xl text-[#e1e0cc]/50">{t(content.toolsIntro.subtitle, lang)}</p></div></Reveal>
+    <Reveal><div className="mx-auto mb-14 max-w-2xl text-center"><h2 className="display text-[clamp(2.4rem,4.5vw,3.8rem)] font-bold leading-[1.04] tracking-[-.025em]">{t(content.toolsIntro.title, lang)}</h2><p className="mt-4 text-lg text-[#e1e0cc]/45">{t(content.toolsIntro.subtitle, lang)}</p></div></Reveal>
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-      <Reveal><div className="group relative min-h-[520px] overflow-hidden rounded-[1.6rem] border border-white/10 bg-[#101010]"><VideoOrImage src={content.toolsIntro.canvasShowreel} poster={content.toolsIntro.canvasPoster} /><div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-transparent" /><h3 className="absolute bottom-7 left-6 max-w-[13rem] text-2xl font-bold tracking-[-.05em]">{t(content.toolsIntro.canvasTitle, lang)}</h3></div></Reveal>
+      <Reveal><div className="group relative min-h-[520px] overflow-hidden rounded-[1.6rem] border border-white/10 bg-[#101010]"><div className="absolute inset-0"><VideoOrImage src={content.toolsIntro.canvasShowreel} poster={content.toolsIntro.canvasPoster} /></div><div className="absolute inset-0 bg-gradient-to-t from-black via-black/25 to-transparent" /><h3 className="absolute bottom-7 left-6 max-w-[13rem] text-2xl font-bold tracking-[-.05em]">{t(content.toolsIntro.canvasTitle, lang)}</h3></div></Reveal>
       {content.tools.map((tool, i) => <ToolCardView key={tool.id} tool={tool} lang={lang} delay={(i + 1) * .06} />)}
     </div>
   </div></section>;
@@ -236,7 +236,7 @@ function Collaborators({ content, lang }: { content: SiteContent; lang: Lang }) 
   const [selected, setSelected] = useState<Collaborator | null>(null);
   return <section id="collaborators" className="container py-24"><div className="panel rounded-[2.2rem] p-5 md:p-10 lg:p-16">
     <div className="grid gap-10 lg:grid-cols-[.75fr_1.25fr]"><Reveal><div className="lg:sticky lg:top-10"><p className="mb-5 mono text-[10px] font-medium uppercase tracking-[.3em] text-[#e1e0cc]/55">{t(content.collaboratorsIntro.eyebrow, lang)}</p><h2 className="display text-[clamp(2.5rem,5.8vw,5rem)] font-bold leading-[.92] tracking-[-.03em]"><span>{t(content.collaboratorsIntro.titlePrefix, lang)} </span><span className="accent block text-[1.08em]">{t(content.collaboratorsIntro.titleAccent, lang)}</span></h2><p className="mt-8 max-w-sm text-sm leading-7 text-[#e1e0cc]/55">{t(content.collaboratorsIntro.body, lang)}</p></div></Reveal>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">{content.collaborators.map(person => <Reveal key={person.id}><PersonCard person={person} lang={lang} onClick={() => setSelected(person)} /></Reveal>)}</div></div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">{content.collaborators.map(person => <Reveal key={person.id}><PersonCard person={person} lang={lang} onClick={() => setSelected(person)} /></Reveal>)}</div></div>
   </div><PersonModal person={selected} lang={lang} onClose={() => setSelected(null)} /></section>;
 }
 function PersonCard({ person, lang, onClick }: { person: Collaborator; lang: Lang; onClick: () => void }) {
@@ -248,7 +248,7 @@ function PersonModal({ person, lang, onClose }: { person: Collaborator | null; l
 }
 
 function Stats({ content, lang }: { content: SiteContent; lang: Lang }) {
-  return <section id="stats" className="container py-12 md:py-24"><div className="panel rounded-[2.2rem] p-7 md:p-14"><div className="grid gap-8 md:grid-cols-2"><Reveal><div><p className="mb-5 mono text-[10px] font-medium uppercase tracking-[.3em] text-[#e1e0cc]/55">{t(content.statsIntro.eyebrow, lang)}</p><h2 className="display text-[clamp(2.4rem,5vw,5rem)] font-bold leading-[.94] tracking-[-.03em]">{t(content.statsIntro.titlePrefix, lang)} <span className="accent">{t(content.statsIntro.titleAccent, lang)}</span> {t(content.statsIntro.titleSuffix, lang)}</h2></div></Reveal><Reveal><p className="max-w-sm text-sm leading-7 text-[#e1e0cc]/55">{t(content.statsIntro.body, lang)}</p></Reveal></div><div className="mt-14 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">{content.stats.map(s => <CounterStat key={s.id} stat={s} lang={lang} />)}</div><div className="mt-16 grid gap-8 md:grid-cols-[.6fr_1.4fr] md:items-end"><div><p className="mb-8 max-w-sm text-lg leading-7 text-[#e1e0cc]/65">{lang === "ru" ? "Каждый проект — возможность учиться, расти и двигать креативность дальше." : "Every project is an opportunity to learn, to grow, and to push creativity further."}</p><a href="#contact" className="inline-flex items-center gap-3 rounded-full bg-[#e1e0cc] px-5 py-3 text-sm font-bold text-black hover:bg-white">{t(content.statsIntro.cta, lang)}<CircleArrowRight /></a></div><img src={content.statsIntro.image} alt="Cinematic sunset" className="h-72 w-full rounded-[1.4rem] object-cover" /></div></div></section>;
+  return <section id="stats" className="container py-12 md:py-24"><div className="panel rounded-[2.2rem] p-7 md:p-14"><Reveal><div className="max-w-3xl"><p className="mb-5 mono text-[10px] font-medium uppercase tracking-[.3em] text-[#e1e0cc]/55">{t(content.statsIntro.eyebrow, lang)}</p><h2 className="display text-[clamp(2.4rem,5vw,5rem)] font-bold leading-[.94] tracking-[-.03em]">{t(content.statsIntro.titlePrefix, lang)} <span className="accent">{t(content.statsIntro.titleAccent, lang)}</span> {t(content.statsIntro.titleSuffix, lang)}</h2></div></Reveal><div className="mt-14 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">{content.stats.map(s => <CounterStat key={s.id} stat={s} lang={lang} />)}</div><div className="mt-16 grid gap-8 md:grid-cols-[.6fr_1.4fr] md:items-end"><div><p className="mb-8 max-w-sm text-lg leading-7 text-[#e1e0cc]/65">{lang === "ru" ? "Каждый проект — возможность учиться, расти и двигать креативность дальше." : "Every project is an opportunity to learn, to grow, and to push creativity further."}</p><a href="#contact" className="inline-flex items-center gap-3 rounded-full bg-[#e1e0cc] px-5 py-3 text-sm font-bold text-black hover:bg-white">{t(content.statsIntro.cta, lang)}<CircleArrowRight /></a></div><img src={content.statsIntro.image} alt="Cinematic sunset" className="h-72 w-full rounded-[1.4rem] object-cover" /></div></div></section>;
 }
 function CounterStat({ stat, lang }: { stat: SiteContent["stats"][number]; lang: Lang }) {
   const ref = useRef<HTMLDivElement | null>(null); const inView = useInView(ref, { once: true, amount: .45 });
@@ -348,6 +348,8 @@ function CustomCursor() {
 export default function Home() {
   const [content, setContent] = useSiteContent(); const [lang, setLang] = useLanguage(); const [adminOpen, setAdminOpen] = useState(false);
   useSmoothScroll();
-  useEffect(() => { const handler = (e: globalThis.KeyboardEvent) => { if (e.ctrlKey && e.altKey && e.key.toLowerCase() === "a") setAdminOpen(true); }; window.addEventListener("keydown", handler); return () => window.removeEventListener("keydown", handler); }, []);
+  // Use e.code (physical key) so the shortcut works on any keyboard layout —
+  // on a Russian layout e.key for the A key is "ф", which broke the old check.
+  useEffect(() => { const handler = (e: globalThis.KeyboardEvent) => { if (e.ctrlKey && e.altKey && e.code === "KeyA") { e.preventDefault(); setAdminOpen(true); } }; window.addEventListener("keydown", handler); return () => window.removeEventListener("keydown", handler); }, []);
   return <main className="relative"><CustomCursor /><Hero content={content} lang={lang} setLang={setLang} openAdmin={() => setAdminOpen(true)} /><Tools content={content} lang={lang} /><Collaborators content={content} lang={lang} /><Stats content={content} lang={lang} /><Contact content={content} lang={lang} /><footer className="container flex flex-wrap items-center justify-between gap-3 border-t border-white/10 py-10 text-sm text-[#e1e0cc]/45"><span>{lang === "ru" ? "© 2026 alex.creates — кинематографичный монтаж и режиссура." : "© 2026 alex.creates — cinematic editing and direction."}</span><span className="mono text-xs tracking-[.2em] text-[#e1e0cc]/35">v0.3</span></footer><AdminPanel open={adminOpen} onClose={() => setAdminOpen(false)} content={content} setContent={setContent} /></main>;
 }

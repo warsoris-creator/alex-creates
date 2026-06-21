@@ -22,7 +22,6 @@ html {
     radial-gradient(90% 70% at 8% 48%, rgba(225, 224, 204, 0.05), transparent 55%),
     linear-gradient(180deg, transparent 58%, rgba(0, 0, 0, 0.55) 100%),
     var(--black);
-  background-attachment: fixed;
 }
 body {
   margin: 0;
@@ -64,6 +63,9 @@ a { text-decoration: none; }
    Only sets the family/style so the per-element Tailwind weight + tracking still win. */
 .display { font-family: var(--font-accent), Georgia, serif; font-style: normal; }
 .accent { font-family: var(--font-accent), Georgia, serif; font-style: italic; font-weight: 600; letter-spacing: -0.035em; }
+/* Russian headings use Lora — Playfair's Cyrillic glyphs look dated/uneven. */
+html[lang="ru"] .display { font-family: var(--font-display-ru), Georgia, serif; letter-spacing: -0.02em; }
+html[lang="ru"] .accent { font-family: var(--font-display-ru), Georgia, serif; font-style: italic; }
 /* Editorial monospace — eyebrows, labels, version, data. */
 .mono { font-family: var(--font-mono), ui-monospace, monospace; }
 .container { width: min(100% - 40px, 1460px); margin-inline: auto; }
