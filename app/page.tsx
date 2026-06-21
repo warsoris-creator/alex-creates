@@ -233,7 +233,13 @@ function MediaDrop({ label, value, kind, onChange, ratio = "aspect-video", round
   async function handle(file?: File | null) {
     if (!file || !edit) return;
     setBusy(true); setErr("");
-    try { onChange(await edit.upload(file)); } catch { setErr("Upload failed"); } finally { setBusy(false); }
+    const prev = value;
+    try {
+      const url = await edit.upload(file);
+      onChange(url);
+      // Replacing an uploaded file? Remove the old one so orphans don't pile up.
+      if (prev && prev.startsWith("/uploads/") && prev !== url) deleteUploads([prev]).catch(() => {});
+    } catch { setErr("Upload failed"); } finally { setBusy(false); }
   }
   const box = round ? "mx-auto h-24 w-24 rounded-full" : `w-full ${ratio} rounded-xl`;
   return <div className="mb-3">
