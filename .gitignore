@@ -23,3 +23,8 @@ yarn-error.log*
 
 # local tooling
 /.claude/
+/.playwright-mcp/
+
+# admin: server content + uploaded media (local only, never committed)
+/data/
+/public/uploads/

@@ -1,12 +1,29 @@
 "use client";
 
-import { KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useMotionValue, useReducedMotion, useScroll, useSpring, useTransform } from "framer-motion";
-import { ArrowUpRight, CircleArrowRight, Film, Pencil, Plus, Save, Trash2, X, Brain, Sparkles, Scissors, Box, Eye, Play } from "lucide-react";
+import { ArrowUpRight, CircleArrowRight, Pencil, Plus, Trash2, X, Brain, Sparkles, Scissors, Box, Eye, Play, LogOut, Upload, Loader2 } from "lucide-react";
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, useSortable, arrayMove, rectSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import Lenis from "lenis";
-import { defaultContent, languageKey, Lang, SiteContent, storageKey, ToolCard, Collaborator, WorkItem } from "@/lib/content";
+import { defaultContent, languageKey, Lang, SiteContent, storageKey, Collaborator, WorkItem } from "@/lib/content";
 
 const ease = [0.22, 1, 0.36, 1] as const;
+
+// ---- Inline edit framework -------------------------------------------------
+type SyncState = "idle" | "saving" | "error";
+type EditAPI = {
+  editMode: boolean;
+  setEditMode: (b: boolean) => void;
+  setContent: React.Dispatch<React.SetStateAction<SiteContent>>;
+  update: (path: string, value: unknown) => void;
+  upload: (file: File) => Promise<string>;
+  sync: SyncState;
+};
+const EditContext = createContext<EditAPI | null>(null);
+function useEdit() { return useContext(EditContext); }
+
 // Admin gate: only a SHA-256 hash of the password is ever shipped to the client,
 // so the plaintext password is never present in the bundle or the git history.
 // Default hash = sha256("alex-creates-2026"); override with NEXT_PUBLIC_ADMIN_PASSWORD_HASH.
@@ -57,18 +74,42 @@ function useSmoothScroll() {
   }, [reduce]);
 }
 
+// Content is served by the local backend (data/content.json via /api/content) and
+// is the source of truth for every visitor. Edits PUT back to the server (debounced)
+// and the sync state drives the admin-bar dot. Falls back to a localStorage cache /
+// the bundled defaults when the API is unavailable (e.g. static export build).
 function useSiteContent() {
   const [content, setContent] = useState<SiteContent>(defaultContent);
   const [hydrated, setHydrated] = useState(false);
+  const [sync, setSync] = useState<SyncState>("idle");
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const skipNext = useRef(true);
+
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(storageKey);
-      if (saved) setContent(JSON.parse(saved));
-    } catch { setContent(defaultContent); }
-    setHydrated(true);
+    let cancelled = false;
+    fetch("/api/content").then(r => (r.ok ? r.json() : Promise.reject()))
+      .then((d: SiteContent) => { if (!cancelled) setContent(d); })
+      .catch(() => { try { const c = localStorage.getItem(storageKey); if (c && !cancelled) setContent(JSON.parse(c)); } catch {} })
+      .finally(() => { if (!cancelled) setHydrated(true); });
+    return () => { cancelled = true; };
   }, []);
-  useEffect(() => { if (hydrated) localStorage.setItem(storageKey, JSON.stringify(content)); }, [content, hydrated]);
-  return [content, setContent] as const;
+
+  useEffect(() => {
+    if (!hydrated) return;
+    if (skipNext.current) { skipNext.current = false; return; }
+    try { localStorage.setItem(storageKey, JSON.stringify(content)); } catch {}
+    setSync("saving");
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(async () => {
+      try {
+        const res = await fetch("/api/content", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(content) });
+        if (!res.ok) throw new Error();
+        setSync("idle");
+      } catch { setSync("error"); }
+    }, 600);
+  }, [content, hydrated]);
+
+  return { content, setContent, hydrated, sync, setSync };
 }
 
 function useLanguage() {
@@ -172,9 +213,112 @@ function HeroVideo({ src, poster, className = "" }: { src: string; poster?: stri
   </div>;
 }
 
+// ---- Reusable editor UI ----------------------------------------------------
+function EditButton({ onClick, className = "" }: { onClick: () => void; className?: string }) {
+  return <button onClick={(e) => { e.stopPropagation(); e.preventDefault(); onClick(); }} title="Edit"
+    className={`grid h-9 w-9 place-items-center rounded-full border border-white/25 bg-black/65 text-[#e8e7d5] shadow-lg backdrop-blur-md transition hover:scale-105 hover:border-[#d89b57]/70 hover:text-white active:scale-95 ${className}`}>
+    <Pencil className="h-4 w-4" />
+  </button>;
+}
+
+function EField({ label, value, onChange, textarea = false, placeholder = "" }: { label: string; value: string; onChange: (v: string) => void; textarea?: boolean; placeholder?: string }) {
+  const cls = "mt-1 w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-[#e1e0cc] outline-none transition focus:border-[#d89b57]/50 focus:shadow-[0_0_0_3px_rgba(216,155,87,0.12)]";
+  return <label className="mb-3 block text-xs text-[#e1e0cc]/60">{label}
+    {textarea ? <textarea value={value} onChange={e => onChange(e.target.value)} rows={3} placeholder={placeholder} className={cls} />
+      : <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className={cls} />}
+  </label>;
+}
+
+// Drag-drop / click / paste-URL media uploader. Real upload goes to /api/upload.
+function MediaDrop({ label, value, kind, onChange }: { label: string; value: string; kind: "image" | "video"; onChange: (url: string) => void }) {
+  const edit = useEdit();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const ref = useRef<HTMLInputElement | null>(null);
+  async function handle(file?: File | null) {
+    if (!file || !edit) return;
+    setBusy(true); setErr("");
+    try { onChange(await edit.upload(file)); } catch { setErr("Upload failed"); } finally { setBusy(false); }
+  }
+  return <div className="mb-3">
+    <p className="mb-1.5 text-xs text-[#e1e0cc]/60">{label}</p>
+    <div onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); handle(e.dataTransfer.files?.[0]); }} onClick={() => ref.current?.click()}
+      className="relative flex aspect-video cursor-pointer items-center justify-center overflow-hidden rounded-xl border border-dashed border-white/20 bg-black/40 transition hover:border-[#d89b57]/50">
+      {value ? (kind === "video"
+        ? <video src={value} muted loop playsInline autoPlay className="absolute inset-0 h-full w-full object-cover opacity-70" />
+        : <img src={value} alt="" className="absolute inset-0 h-full w-full object-cover opacity-70" />) : null}
+      <div className="relative z-10 flex flex-col items-center gap-1 rounded-lg bg-black/55 px-3 py-2 text-center text-xs text-[#e1e0cc]/85 backdrop-blur">
+        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+        <span>{busy ? "Uploading…" : "Drop file or click"}</span>
+      </div>
+      <input ref={ref} type="file" accept={kind === "video" ? "video/*" : "image/*"} className="hidden" onChange={e => handle(e.target.files?.[0])} />
+    </div>
+    {err && <p className="mt-1 text-xs text-red-300">{err}</p>}
+    <input value={value} onChange={e => onChange(e.target.value)} placeholder="or paste URL" className="mt-1.5 w-full rounded-lg border border-white/10 bg-black/40 px-2.5 py-1.5 text-xs text-[#e1e0cc]" />
+  </div>;
+}
+
+function LinksEditor({ links, onChange }: { links: { label: string; url: string }[]; onChange: (l: { label: string; url: string }[]) => void }) {
+  return <div className="mb-3">
+    <p className="mb-1.5 text-xs text-[#e1e0cc]/60">Buttons (name + link)</p>
+    {links.map((l, i) => <div key={i} className="mb-1.5 flex gap-1.5">
+      <input value={l.label} onChange={e => onChange(links.map((x, j) => j === i ? { ...x, label: e.target.value } : x))} placeholder="Instagram" className="w-1/3 rounded-lg border border-white/10 bg-black/40 px-2 py-1.5 text-xs text-[#e1e0cc]" />
+      <input value={l.url} onChange={e => onChange(links.map((x, j) => j === i ? { ...x, url: e.target.value } : x))} placeholder="https://…" className="min-w-0 flex-1 rounded-lg border border-white/10 bg-black/40 px-2 py-1.5 text-xs text-[#e1e0cc]" />
+      <button onClick={() => onChange(links.filter((_, j) => j !== i))} className="rounded-lg bg-white/10 px-2 hover:bg-white/20"><Trash2 className="h-3.5 w-3.5" /></button>
+    </div>)}
+    <button onClick={() => onChange([...links, { label: "", url: "" }])} className="mt-1 inline-flex items-center gap-1 text-xs text-[#d89b57] hover:text-[#e9b878]"><Plus className="h-3.5 w-3.5" />Add button</button>
+  </div>;
+}
+
+// Popover shell — parent wraps this in <AnimatePresence> and renders when open.
+function EditShell({ title, onClose, onDelete, children }: { title: string; onClose: () => void; onDelete?: () => void; children: React.ReactNode }) {
+  return <motion.div className="fixed inset-0 z-[80] grid place-items-center bg-black/70 p-4 backdrop-blur-xl" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
+    <motion.div onClick={e => e.stopPropagation()} className="panel max-h-[88vh] w-full max-w-md overflow-auto rounded-[1.4rem] p-5" initial={{ y: 20, scale: .97, opacity: 0 }} animate={{ y: 0, scale: 1, opacity: 1 }} exit={{ y: 16, scale: .98, opacity: 0 }} transition={{ type: "spring", stiffness: 300, damping: 28 }}>
+      <div className="mb-4 flex items-center justify-between"><h3 className="font-bold">{title}</h3><button onClick={onClose} className="rounded-full bg-white/10 p-1.5 hover:bg-white/20"><X className="h-4 w-4" /></button></div>
+      {children}
+      {onDelete && <button onClick={onDelete} className="mt-4 inline-flex items-center gap-2 rounded-full bg-red-500/15 px-4 py-2 text-xs font-medium text-red-200 transition hover:bg-red-500/25"><Trash2 className="h-3.5 w-3.5" />Delete</button>}
+    </motion.div>
+  </motion.div>;
+}
+
+function AddTile({ onClick, label, className = "" }: { onClick: () => void; label: string; className?: string }) {
+  return <button onClick={onClick} className={`grid w-full place-items-center rounded-[1.3rem] border border-dashed border-white/20 bg-white/[.02] text-[#e1e0cc]/60 transition hover:border-[#d89b57]/50 hover:text-white ${className}`}>
+    <span className="flex flex-col items-center gap-2 py-8 text-sm"><span className="grid h-10 w-10 place-items-center rounded-full border border-white/20"><Plus className="h-5 w-5" /></span>{label}</span>
+  </button>;
+}
+
+// Drag-to-reorder wrapper (dnd-kit). Listeners on the whole tile; activation
+// distance lets inner buttons still be clicked.
+function SortableItem({ id, children, className = "" }: { id: string; children: React.ReactNode; className?: string }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? .55 : 1, zIndex: isDragging ? 30 : undefined };
+  return <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={`touch-none ${className}`}>{children}</div>;
+}
+
+function AdminBar() {
+  const edit = useEdit();
+  if (!edit?.editMode) return null;
+  const dot = edit.sync === "saving" ? "bg-yellow-400 animate-pulse" : edit.sync === "error" ? "bg-red-500" : "bg-green-500";
+  const label = edit.sync === "saving" ? "Saving…" : edit.sync === "error" ? "Sync error" : "All saved";
+  return <motion.div initial={{ y: 30, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="fixed bottom-4 right-4 z-[95] flex items-center gap-3 rounded-full border border-white/15 bg-black/75 px-4 py-2.5 text-sm shadow-2xl backdrop-blur-xl">
+    <span className={`h-2.5 w-2.5 rounded-full ${dot}`} title={label} />
+    <span className="font-medium text-[#e8e7d5]">admin mode</span>
+    <span className="h-4 w-px bg-white/20" />
+    <button onClick={() => edit.setEditMode(false)} className="inline-flex items-center gap-1.5 text-[#e1e0cc]/70 transition hover:text-white"><LogOut className="h-4 w-4" />logout</button>
+  </motion.div>;
+}
+
+// Header items in document order, each linking to the right section.
+const NAV = [
+  { href: "#tools", en: "Programs", ru: "Программы" },
+  { href: "#work", en: "My work", ru: "Работы" },
+  { href: "#collaborators", en: "Collaborators", ru: "Команда" },
+  { href: "#contact", en: "Inquiries", ru: "Заявки" },
+];
+
 // Pinned glass header: stays at the top of the viewport on scroll. Sits over the
 // hero transparently and condenses into a more solid pill once the page scrolls.
-function Header({ content, lang, setLang }: { content: SiteContent; lang: Lang; setLang: (l: Lang) => void }) {
+function Header({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 40);
@@ -184,7 +328,7 @@ function Header({ content, lang, setLang }: { content: SiteContent; lang: Lang; 
   }, []);
   return <motion.header className="fixed inset-x-0 top-0 z-40 flex justify-center px-3 pt-4 sm:pt-5" initial={{ y: -32, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: .8, delay: .2, ease }}>
     <nav className={`flex w-[calc(100%-12px)] max-w-3xl flex-wrap items-center justify-center gap-1 rounded-full border p-1.5 text-[13px] shadow-2xl backdrop-blur-xl transition-colors duration-500 sm:w-auto sm:flex-nowrap ${scrolled ? "border-white/10 bg-black/72" : "border-white/10 bg-black/40"}`}>
-      {t(content.nav, lang).map((item, i) => <a key={item} href={["#collaborators", "#tools", "#work", "#contact"][i]} className="rounded-full px-4 py-2.5 text-[#e1e0cc]/80 transition hover:bg-white/10 hover:text-white">{item}</a>)}
+      {NAV.map(n => <a key={n.href} href={n.href} className="rounded-full px-4 py-2.5 text-[#e1e0cc]/80 transition hover:bg-white/10 hover:text-white">{lang === "ru" ? n.ru : n.en}</a>)}
       <span className="mx-1.5 hidden h-6 w-px bg-white/15 sm:block" />
       <button onClick={() => setLang("ru")} className={`rounded-full px-3.5 py-2.5 font-medium transition active:scale-[0.98] ${lang === "ru" ? "bg-[#e1e0cc] text-black" : "text-[#e1e0cc]/65 hover:bg-white/10"}`}>RU</button>
       <button onClick={() => setLang("en")} className={`rounded-full px-3.5 py-2.5 font-medium transition active:scale-[0.98] ${lang === "en" ? "bg-[#e1e0cc] text-black" : "text-[#e1e0cc]/65 hover:bg-white/10"}`}>EN</button>
@@ -249,11 +393,95 @@ function Tools({ content, lang }: { content: SiteContent; lang: Lang }) {
 }
 
 function Collaborators({ content, lang }: { content: SiteContent; lang: Lang }) {
+  const edit = useEdit();
+  const editMode = !!edit?.editMode;
   const [selected, setSelected] = useState<Collaborator | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingIntro, setEditingIntro] = useState(false);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+  const people = content.collaborators;
+  const editingPerson = people.find(p => p.id === editingId) || null;
+
+  function onDragEnd(e: DragEndEvent) {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const from = people.findIndex(p => p.id === active.id);
+    const to = people.findIndex(p => p.id === over.id);
+    edit?.setContent(prev => ({ ...prev, collaborators: arrayMove(prev.collaborators, from, to) }));
+  }
+  function addPerson() {
+    const np: Collaborator = { id: uid("person"), name: { en: "New collaborator", ru: "Новый участник" }, role: { en: "Role", ru: "Роль" }, studio: "", bio: { en: "", ru: "" }, image: "", showreel: "", detailVideo: "", links: [] };
+    edit?.setContent(prev => ({ ...prev, collaborators: [...prev.collaborators, np] }));
+    setEditingId(np.id);
+  }
+
   return <section id="collaborators" className="container py-24"><div className="panel rounded-[2.2rem] p-5 md:p-10 lg:p-16">
-    <div className="grid gap-10 lg:grid-cols-[.75fr_1.25fr]"><Reveal><div className="lg:sticky lg:top-10"><p className="mb-5 mono text-[10px] font-medium uppercase tracking-[.3em] text-[#e1e0cc]/55">{t(content.collaboratorsIntro.eyebrow, lang)}</p><h2 className="display text-[clamp(2.5rem,5.8vw,5rem)] font-bold leading-[.92] tracking-[-.03em]"><span>{t(content.collaboratorsIntro.titlePrefix, lang)} </span><span className="accent block text-[1.08em]">{t(content.collaboratorsIntro.titleAccent, lang)}</span></h2><p className="mt-8 max-w-sm text-sm leading-7 text-[#e1e0cc]/55">{t(content.collaboratorsIntro.body, lang)}</p></div></Reveal>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">{content.collaborators.map(person => <Reveal key={person.id}><PersonCard person={person} lang={lang} onClick={() => setSelected(person)} /></Reveal>)}</div></div>
-  </div><PersonModal person={selected} lang={lang} onClose={() => setSelected(null)} /></section>;
+    <div className="grid gap-10 lg:grid-cols-[.75fr_1.25fr]">
+      <Reveal><div className="relative lg:sticky lg:top-10">
+        <p className="mb-5 mono text-[10px] font-medium uppercase tracking-[.3em] text-[#e1e0cc]/55">{t(content.collaboratorsIntro.eyebrow, lang)}</p>
+        <h2 className="display text-[clamp(2.5rem,5.8vw,5rem)] font-bold leading-[.92] tracking-[-.03em]"><span>{t(content.collaboratorsIntro.titlePrefix, lang)} </span><span className="accent block text-[1.08em]">{t(content.collaboratorsIntro.titleAccent, lang)}</span></h2>
+        <p className="mt-8 max-w-sm text-sm leading-7 text-[#e1e0cc]/55">{t(content.collaboratorsIntro.body, lang)}</p>
+        {editMode && <EditButton className="absolute right-0 top-0" onClick={() => setEditingIntro(true)} />}
+      </div></Reveal>
+      {editMode
+        ? <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+            <SortableContext items={people.map(p => p.id)} strategy={rectSortingStrategy}>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+                {people.map(p => <SortableItem key={p.id} id={p.id}><PersonTile person={p} lang={lang} onEdit={() => setEditingId(p.id)} /></SortableItem>)}
+                <AddTile onClick={addPerson} label={lang === "ru" ? "Добавить" : "Add"} className="aspect-[.9]" />
+              </div>
+            </SortableContext>
+          </DndContext>
+        : <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">{people.map(person => <Reveal key={person.id}><PersonCard person={person} lang={lang} onClick={() => setSelected(person)} /></Reveal>)}</div>}
+    </div>
+  </div>
+  <PersonModal person={selected} lang={lang} onClose={() => setSelected(null)} />
+  <AnimatePresence>{editingPerson && <PersonEditPopover person={editingPerson} idx={people.findIndex(p => p.id === editingPerson.id)} onClose={() => setEditingId(null)} />}</AnimatePresence>
+  <AnimatePresence>{editingIntro && <CollabIntroEditPopover content={content} onClose={() => setEditingIntro(false)} />}</AnimatePresence>
+  </section>;
+}
+
+function PersonTile({ person, lang, onEdit }: { person: Collaborator; lang: Lang; onEdit: () => void }) {
+  return <div className="group relative aspect-[.9] overflow-hidden rounded-[1.45rem] border border-white/10 bg-[#111]">
+    {person.image ? <img src={person.image} alt="" className="absolute inset-0 h-full w-full object-cover" /> : null}
+    <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent" />
+    <div className="absolute bottom-0 p-4"><h3 className="text-base font-bold tracking-[-.04em]">{t(person.name, lang)}</h3><p className="text-xs text-[#e1e0cc]/65">{t(person.role, lang)}</p></div>
+    <EditButton className="absolute right-2 top-2 h-8 w-8" onClick={onEdit} />
+  </div>;
+}
+
+function PersonEditPopover({ person, idx, onClose }: { person: Collaborator; idx: number; onClose: () => void }) {
+  const edit = useEdit()!;
+  const set = (f: string, v: unknown) => edit.update(`collaborators.${idx}.${f}`, v);
+  const del = () => { edit.setContent(prev => ({ ...prev, collaborators: prev.collaborators.filter(p => p.id !== person.id) })); onClose(); };
+  return <EditShell title="Edit collaborator" onClose={onClose} onDelete={del}>
+    <MediaDrop label="Preview photo" kind="image" value={person.image} onChange={v => set("image", v)} />
+    <MediaDrop label="Card showreel (plays after preview)" kind="video" value={person.showreel} onChange={v => set("showreel", v)} />
+    <MediaDrop label="Detail video (in the card)" kind="video" value={person.detailVideo} onChange={v => set("detailVideo", v)} />
+    <EField label="Name (EN)" value={person.name.en} onChange={v => set("name.en", v)} />
+    <EField label="Name (RU)" value={person.name.ru} onChange={v => set("name.ru", v)} />
+    <EField label="Text under name (EN)" value={person.role.en} onChange={v => set("role.en", v)} />
+    <EField label="Text under name (RU)" value={person.role.ru} onChange={v => set("role.ru", v)} />
+    <EField label="Studio / company" value={person.studio} onChange={v => set("studio", v)} />
+    <EField label="Bio (EN)" value={person.bio.en} onChange={v => set("bio.en", v)} textarea />
+    <EField label="Bio (RU)" value={person.bio.ru} onChange={v => set("bio.ru", v)} textarea />
+    <LinksEditor links={person.links} onChange={l => set("links", l)} />
+  </EditShell>;
+}
+
+function CollabIntroEditPopover({ content, onClose }: { content: SiteContent; onClose: () => void }) {
+  const edit = useEdit()!;
+  const u = (p: string, v: string) => edit.update(p, v);
+  return <EditShell title="Edit section header" onClose={onClose}>
+    <EField label="Eyebrow (EN)" value={content.collaboratorsIntro.eyebrow.en} onChange={v => u("collaboratorsIntro.eyebrow.en", v)} />
+    <EField label="Eyebrow (RU)" value={content.collaboratorsIntro.eyebrow.ru} onChange={v => u("collaboratorsIntro.eyebrow.ru", v)} />
+    <EField label="Title prefix (EN)" value={content.collaboratorsIntro.titlePrefix.en} onChange={v => u("collaboratorsIntro.titlePrefix.en", v)} />
+    <EField label="Title prefix (RU)" value={content.collaboratorsIntro.titlePrefix.ru} onChange={v => u("collaboratorsIntro.titlePrefix.ru", v)} />
+    <EField label="Title accent (EN)" value={content.collaboratorsIntro.titleAccent.en} onChange={v => u("collaboratorsIntro.titleAccent.en", v)} />
+    <EField label="Title accent (RU)" value={content.collaboratorsIntro.titleAccent.ru} onChange={v => u("collaboratorsIntro.titleAccent.ru", v)} />
+    <EField label="Body (EN)" value={content.collaboratorsIntro.body.en} onChange={v => u("collaboratorsIntro.body.en", v)} textarea />
+    <EField label="Body (RU)" value={content.collaboratorsIntro.body.ru} onChange={v => u("collaboratorsIntro.body.ru", v)} textarea />
+  </EditShell>;
 }
 function PersonCard({ person, lang, onClick }: { person: Collaborator; lang: Lang; onClick: () => void }) {
   const [hover, setHover] = useState(false);
@@ -264,29 +492,117 @@ function PersonModal({ person, lang, onClose }: { person: Collaborator | null; l
 }
 
 // Views pill + round client avatar, shown over each work video and in the modal.
-function ViewsAvatar({ views, avatar, alt, size = "card" }: { views: string; avatar: string; alt: string; size?: "card" | "modal" }) {
+function ViewsAvatar({ views, avatar, name, size = "card" }: { views: string; avatar: string; name?: string; size?: "card" | "modal" }) {
   const big = size === "modal";
   return <div className="flex items-center gap-2">
     <span className={`inline-flex items-center gap-1.5 rounded-full bg-black/55 font-medium text-[#e8e7d5] backdrop-blur-md ${big ? "px-3 py-1.5 text-xs" : "px-2.5 py-1 text-[11px]"}`}><Eye className={big ? "h-3.5 w-3.5" : "h-3 w-3"} />{views}</span>
-    <img src={avatar} alt={alt} className={`shrink-0 rounded-full border border-white/40 object-cover ${big ? "h-10 w-10" : "h-8 w-8"}`} />
+    <span className="flex min-w-0 items-center gap-1.5 rounded-full bg-black/45 py-0.5 pl-0.5 pr-2 backdrop-blur-md">
+      <img src={avatar} alt={name || ""} className={`shrink-0 rounded-full border border-white/40 object-cover ${big ? "h-9 w-9" : "h-7 w-7"}`} />
+      {name && <span className={`truncate font-medium text-[#e8e7d5] ${big ? "text-sm" : "max-w-[6.5rem] text-[11px]"}`}>{name}</span>}
+    </span>
   </div>;
 }
 
 function Work({ content, lang }: { content: SiteContent; lang: Lang }) {
+  const edit = useEdit();
+  const editMode = !!edit?.editMode;
   const [selected, setSelected] = useState<WorkItem | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingIntro, setEditingIntro] = useState(false);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+  const works = content.works;
+  const editingWork = works.find(w => w.id === editingId) || null;
+
+  function onDragEnd(e: DragEndEvent) {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const from = works.findIndex(w => w.id === active.id);
+    const to = works.findIndex(w => w.id === over.id);
+    edit?.setContent(prev => ({ ...prev, works: arrayMove(prev.works, from, to) }));
+  }
+  function addWork() {
+    const nw: WorkItem = { id: uid("work"), orientation: "landscape", video: "", poster: "", avatar: "", client: { en: "New client", ru: "Новый клиент" }, views: "0", title: { en: "New work", ru: "Новая работа" }, description: { en: "", ru: "" }, links: [] };
+    edit?.setContent(prev => ({ ...prev, works: [...prev.works, nw] }));
+    setEditingId(nw.id);
+  }
+
   return <section id="work" className="container py-16 md:py-24"><div className="panel rounded-[2.2rem] p-5 md:rounded-[2.6rem] md:p-12">
-    <Reveal><div className="mb-8 flex flex-col gap-4 md:mb-12 md:flex-row md:items-end md:justify-between">
+    <Reveal><div className="relative mb-8 flex flex-col gap-4 md:mb-12 md:flex-row md:items-end md:justify-between">
       <div>
         <p className="mb-3 mono text-[10px] font-medium uppercase tracking-[.3em] text-[#e1e0cc]/55">{t(content.workIntro.eyebrow, lang)}</p>
         <h2 className="display text-[clamp(2.4rem,5vw,4.6rem)] font-bold leading-[.96] tracking-[-.03em]">{t(content.workIntro.title, lang)}</h2>
       </div>
       <p className="max-w-xs text-sm leading-6 text-[#e1e0cc]/45 md:text-right">{t(content.workIntro.subtitle, lang)}</p>
+      {editMode && <EditButton className="absolute right-0 top-0" onClick={() => setEditingIntro(true)} />}
     </div></Reveal>
-    <div className="[column-fill:balance] [column-gap:0.75rem] sm:columns-2 lg:columns-3 [&>*]:mb-3">
-      {content.works.map(w => <WorkCard key={w.id} work={w} lang={lang} onClick={() => setSelected(w)} />)}
-    </div>
+
+    {editMode
+      ? <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+          <SortableContext items={works.map(w => w.id)} strategy={rectSortingStrategy}>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              {works.map(w => <SortableItem key={w.id} id={w.id}><WorkTile work={w} lang={lang} onEdit={() => setEditingId(w.id)} /></SortableItem>)}
+              <AddTile onClick={addWork} label={lang === "ru" ? "Добавить видео" : "Add video"} className="aspect-video" />
+            </div>
+          </SortableContext>
+        </DndContext>
+      : <div className="[column-fill:balance] [column-gap:0.75rem] sm:columns-2 lg:columns-3 [&>*]:mb-3">
+          {works.map(w => <WorkCard key={w.id} work={w} lang={lang} onClick={() => setSelected(w)} />)}
+        </div>}
+
     <WorkModal work={selected} lang={lang} onClose={() => setSelected(null)} />
+    <AnimatePresence>{editingWork && <WorkEditPopover work={editingWork} idx={works.findIndex(w => w.id === editingWork.id)} onClose={() => setEditingId(null)} />}</AnimatePresence>
+    <AnimatePresence>{editingIntro && <IntroEditPopover content={content} onClose={() => setEditingIntro(false)} />}</AnimatePresence>
   </div></section>;
+}
+
+function WorkTile({ work, lang, onEdit }: { work: WorkItem; lang: Lang; onEdit: () => void }) {
+  return <div className="group relative aspect-video overflow-hidden rounded-[1.3rem] border border-white/10 bg-[#111]">
+    {work.poster ? <img src={work.poster} alt="" className="absolute inset-0 h-full w-full object-cover" />
+      : work.video ? <video src={work.video} muted loop playsInline className="absolute inset-0 h-full w-full object-cover" /> : null}
+    <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
+    <span className="absolute left-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-medium backdrop-blur">{work.orientation === "portrait" ? "9:16" : "16:9"}</span>
+    <div className="absolute right-2 top-2 scale-90 origin-top-right"><ViewsAvatar views={work.views} avatar={work.avatar} name={t(work.client, lang)} /></div>
+    <span className="absolute bottom-2 left-3 right-12 truncate text-xs font-bold drop-shadow">{t(work.title, lang)}</span>
+    <EditButton className="absolute bottom-2 right-2 h-8 w-8" onClick={onEdit} />
+  </div>;
+}
+
+function WorkEditPopover({ work, idx, onClose }: { work: WorkItem; idx: number; onClose: () => void }) {
+  const edit = useEdit()!;
+  const set = (field: string, value: unknown) => edit.update(`works.${idx}.${field}`, value);
+  const del = () => { edit.setContent(prev => ({ ...prev, works: prev.works.filter(w => w.id !== work.id) })); onClose(); };
+  return <EditShell title="Edit video" onClose={onClose} onDelete={del}>
+    <div className="mb-3">
+      <p className="mb-1.5 text-xs text-[#e1e0cc]/60">Format</p>
+      <div className="flex gap-2">
+        {(["landscape", "portrait"] as const).map(o => <button key={o} onClick={() => set("orientation", o)} className={`flex-1 rounded-lg border px-3 py-2 text-sm transition ${work.orientation === o ? "border-[#d89b57] bg-[#d89b57]/15 text-white" : "border-white/10 text-[#e1e0cc]/70 hover:bg-white/5"}`}>{o === "portrait" ? "9:16 vertical" : "16:9 horizontal"}</button>)}
+      </div>
+    </div>
+    <MediaDrop label="Video" kind="video" value={work.video} onChange={v => set("video", v)} />
+    <MediaDrop label="Poster (optional)" kind="image" value={work.poster} onChange={v => set("poster", v)} />
+    <MediaDrop label="Client avatar" kind="image" value={work.avatar} onChange={v => set("avatar", v)} />
+    <EField label="Client name (EN)" value={work.client.en} onChange={v => set("client.en", v)} />
+    <EField label="Client name (RU)" value={work.client.ru} onChange={v => set("client.ru", v)} />
+    <EField label="Views" value={work.views} onChange={v => set("views", v)} placeholder="1.2M" />
+    <EField label="Title (EN)" value={work.title.en} onChange={v => set("title.en", v)} />
+    <EField label="Title (RU)" value={work.title.ru} onChange={v => set("title.ru", v)} />
+    <EField label="Description (EN)" value={work.description.en} onChange={v => set("description.en", v)} textarea />
+    <EField label="Description (RU)" value={work.description.ru} onChange={v => set("description.ru", v)} textarea />
+    <LinksEditor links={work.links} onChange={l => set("links", l)} />
+  </EditShell>;
+}
+
+function IntroEditPopover({ content, onClose }: { content: SiteContent; onClose: () => void }) {
+  const edit = useEdit()!;
+  const u = (p: string, v: string) => edit.update(p, v);
+  return <EditShell title="Edit section header" onClose={onClose}>
+    <EField label="Eyebrow (EN)" value={content.workIntro.eyebrow.en} onChange={v => u("workIntro.eyebrow.en", v)} />
+    <EField label="Eyebrow (RU)" value={content.workIntro.eyebrow.ru} onChange={v => u("workIntro.eyebrow.ru", v)} />
+    <EField label="Title (EN)" value={content.workIntro.title.en} onChange={v => u("workIntro.title.en", v)} />
+    <EField label="Title (RU)" value={content.workIntro.title.ru} onChange={v => u("workIntro.title.ru", v)} />
+    <EField label="Subtitle (EN)" value={content.workIntro.subtitle.en} onChange={v => u("workIntro.subtitle.en", v)} textarea />
+    <EField label="Subtitle (RU)" value={content.workIntro.subtitle.ru} onChange={v => u("workIntro.subtitle.ru", v)} textarea />
+  </EditShell>;
 }
 
 function WorkCard({ work, lang, onClick }: { work: WorkItem; lang: Lang; onClick: () => void }) {
@@ -297,7 +613,7 @@ function WorkCard({ work, lang, onClick }: { work: WorkItem; lang: Lang; onClick
       <img src={work.poster} alt={t(work.title, lang)} className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-[1.04]" />
       <AnimatePresence>{hover && <motion.video key="v" src={work.video} poster={work.poster} autoPlay muted loop playsInline className="absolute inset-0 h-full w-full object-cover" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: .8, ease }} />}</AnimatePresence>
       <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-black/25" />
-      <div className="absolute right-3 top-3 z-10"><ViewsAvatar views={work.views} avatar={work.avatar} alt={t(work.client, lang)} /></div>
+      <div className="absolute right-3 top-3 z-10"><ViewsAvatar views={work.views} avatar={work.avatar} name={t(work.client, lang)} /></div>
       <span className="absolute bottom-3 left-3 right-3 z-10 truncate text-sm font-bold tracking-[-.02em] drop-shadow">{t(work.title, lang)}</span>
       <span className="absolute left-1/2 top-1/2 z-10 grid h-12 w-12 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-black/45 opacity-0 backdrop-blur-md transition duration-500 group-hover:opacity-100"><Play className="h-5 w-5 translate-x-px fill-current" /></span>
     </button>
@@ -317,9 +633,10 @@ function WorkModal({ work, lang, onClose }: { work: WorkItem | null; lang: Lang;
           <video src={work.video} poster={work.poster} autoPlay muted loop playsInline controls className="h-full w-full object-cover" />
         </div>
         <div className="flex flex-col">
-          <ViewsAvatar views={work.views} avatar={work.avatar} alt={t(work.client, lang)} size="modal" />
+          <ViewsAvatar views={work.views} avatar={work.avatar} name={t(work.client, lang)} size="modal" />
           <h3 className="display mt-5 text-3xl font-bold tracking-[-.04em]">{t(work.title, lang)}</h3>
           <p className="mt-4 text-sm leading-7 text-[#e1e0cc]/60">{t(work.description, lang)}</p>
+          {work.links?.length > 0 && <div className="mt-6 flex flex-wrap gap-2">{work.links.filter(l => l.label).map(l => <a key={l.label} href={l.url} target="_blank" rel="noopener noreferrer" className="rounded-full border border-white/10 px-4 py-2 text-sm transition hover:border-[#d89b57]/40 hover:bg-white/10">{l.label}</a>)}</div>}
           <a href="#contact" onClick={onClose} className="mt-auto inline-flex w-fit items-center gap-2 pt-8 text-xs font-bold text-[#e1e0cc]/85 transition hover:text-white">{lang === "ru" ? "Обсудить проект" : "Discuss a project"}<ArrowUpRight className="h-3.5 w-3.5" /></a>
         </div>
       </div>
@@ -338,21 +655,7 @@ function ContactLink({ href, icon, label, handle }: { href: string; icon: React.
   </a>;
 }
 
-function AdminPanel({ open, onClose, content, setContent }: { open: boolean; onClose: () => void; content: SiteContent; setContent: React.Dispatch<React.SetStateAction<SiteContent>> }) {
-  const [unlocked, setUnlocked] = useState(false); const [password, setPassword] = useState(""); const [status, setStatus] = useState("");
-  async function login() { if (await sha256Hex(password) === adminPasswordHash) { setUnlocked(true); setStatus(""); } else setStatus("Wrong password."); }
-  function update(path: string, value: unknown) { setContent(prev => structuredCloneAndSet(prev, path, value)); }
-  function addTool() { setContent(prev => ({ ...prev, tools: [...prev.tools, { ...prev.tools[0], id: uid("tool"), title: { en: "New tool", ru: "Новый инструмент" } }] })); }
-  function addPerson() { setContent(prev => ({ ...prev, collaborators: [...prev.collaborators, { ...prev.collaborators[0], id: uid("person"), name: { en: "New collaborator", ru: "Новый участник" } }] })); }
-  function addWork() { setContent(prev => ({ ...prev, works: [...prev.works, { ...prev.works[0], id: uid("work"), title: { en: "New work", ru: "Новая работа" } }] })); }
-  return <AnimatePresence>{open && <motion.div className="fixed inset-0 z-[90] bg-black/86 p-3 backdrop-blur-2xl" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><div className="mx-auto flex h-full max-w-6xl flex-col overflow-hidden rounded-[1.6rem] border border-white/10 bg-[#0b0b0b]"><header className="flex items-center justify-between border-b border-white/10 p-4"><div><p className="text-xs uppercase tracking-[.25em] text-[#e1e0cc]/45">Hidden admin</p><h2 className="text-2xl font-bold">alex.creates control room</h2></div><button onClick={onClose} className="rounded-full bg-white/10 p-2"><X /></button></header>{!unlocked ? <div className="m-auto w-full max-w-sm p-6"><p className="mb-4 text-sm text-[#e1e0cc]/60">Password protected.</p><input value={password} onChange={e => setPassword(e.target.value)} onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => e.key === "Enter" && login()} className="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 outline-none transition focus:border-[#d89b57]/50 focus:shadow-[0_0_0_4px_rgba(216,155,87,0.12)]" type="password" placeholder="Password" /><button onClick={login} className="mt-3 w-full rounded-full bg-[#e1e0cc] py-3 font-bold text-black">Unlock</button><p className="mt-3 text-sm text-red-200">{status}</p></div> : <div className="overflow-auto p-4"><div className="mb-4 flex flex-wrap gap-2"><button onClick={() => localStorage.setItem(storageKey, JSON.stringify(content))} className="rounded-full bg-white/10 px-4 py-2 text-sm"><Save className="mr-2 inline h-4 w-4" />Save content locally</button><button onClick={() => { localStorage.removeItem(storageKey); setContent(defaultContent); }} className="rounded-full bg-red-500/15 px-4 py-2 text-sm">Reset content</button><button onClick={addTool} className="rounded-full bg-white/10 px-4 py-2 text-sm"><Plus className="mr-2 inline h-4 w-4" />Tool</button><button onClick={addPerson} className="rounded-full bg-white/10 px-4 py-2 text-sm"><Plus className="mr-2 inline h-4 w-4" />Collaborator</button><button onClick={addWork} className="rounded-full bg-white/10 px-4 py-2 text-sm"><Plus className="mr-2 inline h-4 w-4" />Work</button></div><div className="grid gap-4 lg:grid-cols-2"><AdminSection title="Hero media + bilingual copy"><AdminInput label="Hero video/image URL" value={content.hero.media} onChange={v => update("hero.media", v)} /><AdminInput label="Hero poster" value={content.hero.poster} onChange={v => update("hero.poster", v)} /><AdminInput label="Hero EN description" value={content.hero.description.en} onChange={v => update("hero.description.en", v)} textarea /><AdminInput label="Hero RU description" value={content.hero.description.ru} onChange={v => update("hero.description.ru", v)} textarea /></AdminSection><AdminSection title="Contact links"><p className="mb-3 rounded-xl bg-amber-500/10 p-3 text-xs text-amber-100">The contact section links to Telegram (<code>{telegramHandle}</code>) and Instagram (<code>{instagramHandle}</code>). Change the handles/URLs in <code>telegramUrl</code> / <code>instagramUrl</code> inside <code>app/page.tsx</code>.</p></AdminSection><AdminSection title="About text"><AdminInput label="EN prefix" value={content.about.prefix.en} onChange={v => update("about.prefix.en", v)} /><AdminInput label="RU prefix" value={content.about.prefix.ru} onChange={v => update("about.prefix.ru", v)} /><AdminInput label="EN accent" value={content.about.accent.en} onChange={v => update("about.accent.en", v)} /><AdminInput label="RU accent" value={content.about.accent.ru} onChange={v => update("about.accent.ru", v)} /><AdminInput label="EN body" value={content.about.body.en} onChange={v => update("about.body.en", v)} textarea /><AdminInput label="RU body" value={content.about.body.ru} onChange={v => update("about.body.ru", v)} textarea /></AdminSection><AdminSection title="Creative canvas"><AdminInput label="Always playing showreel" value={content.toolsIntro.canvasShowreel} onChange={v => update("toolsIntro.canvasShowreel", v)} /><AdminInput label="Poster" value={content.toolsIntro.canvasPoster} onChange={v => update("toolsIntro.canvasPoster", v)} /></AdminSection><AdminSection title="My work — header"><AdminInput label="Eyebrow EN" value={content.workIntro.eyebrow.en} onChange={v => update("workIntro.eyebrow.en", v)} /><AdminInput label="Eyebrow RU" value={content.workIntro.eyebrow.ru} onChange={v => update("workIntro.eyebrow.ru", v)} /><AdminInput label="Title EN" value={content.workIntro.title.en} onChange={v => update("workIntro.title.en", v)} /><AdminInput label="Title RU" value={content.workIntro.title.ru} onChange={v => update("workIntro.title.ru", v)} /><AdminInput label="Subtitle EN" value={content.workIntro.subtitle.en} onChange={v => update("workIntro.subtitle.en", v)} textarea /><AdminInput label="Subtitle RU" value={content.workIntro.subtitle.ru} onChange={v => update("workIntro.subtitle.ru", v)} textarea /></AdminSection></div><AdminCollectionTools tools={content.tools} setContent={setContent} /><AdminCollectionWorks works={content.works} setContent={setContent} /><AdminCollectionPeople people={content.collaborators} setContent={setContent} /></div>}</div></motion.div>}</AnimatePresence>;
-}
 function structuredCloneAndSet<T>(obj: T, path: string, value: unknown): T { const clone = structuredClone(obj); const parts = path.split("."); let cur: any = clone; for (let i = 0; i < parts.length - 1; i++) cur = cur[parts[i]]; cur[parts.at(-1)!] = value; return clone; }
-function AdminSection({ title, children }: { title: string; children: React.ReactNode }) { return <section className="rounded-2xl border border-white/10 bg-white/[.03] p-4"><h3 className="mb-3 flex items-center gap-2 font-bold"><Pencil className="h-4 w-4" />{title}</h3>{children}</section>; }
-function AdminInput({ label, value, onChange, textarea = false }: { label: string; value: string; onChange: (v: string) => void; textarea?: boolean }) { return <label className="mb-3 block text-xs text-[#e1e0cc]/60">{label}{textarea ? <textarea value={value} onChange={e => onChange(e.target.value)} rows={3} className="mt-1 w-full rounded-xl border border-white/10 bg-black/45 p-3 text-sm text-[#e1e0cc]" /> : <input value={value} onChange={e => onChange(e.target.value)} className="mt-1 w-full rounded-xl border border-white/10 bg-black/45 p-3 text-sm text-[#e1e0cc]" />}</label>; }
-function AdminCollectionTools({ tools, setContent }: { tools: ToolCard[]; setContent: React.Dispatch<React.SetStateAction<SiteContent>> }) { return <AdminSection title="Software / tool cards"><div className="grid gap-3 md:grid-cols-2">{tools.map((tool, i) => <div key={tool.id} className="rounded-xl border border-white/10 p-3"><div className="mb-2 flex justify-between"><b>{tool.title.en}</b><button onClick={() => setContent(p => ({ ...p, tools: p.tools.filter(x => x.id !== tool.id) }))}><Trash2 className="h-4 w-4" /></button></div><AdminInput label="Icon key: ae / blend / brain / spark / cut" value={tool.icon} onChange={v => setContent(p => structuredCloneAndSet(p, `tools.${i}.icon`, v as ToolCard["icon"]))} /><AdminInput label="Title EN" value={tool.title.en} onChange={v => setContent(p => structuredCloneAndSet(p, `tools.${i}.title.en`, v))} /><AdminInput label="Title RU" value={tool.title.ru} onChange={v => setContent(p => structuredCloneAndSet(p, `tools.${i}.title.ru`, v))} /><AdminInput label="Subtitle EN" value={tool.subtitle.en} onChange={v => setContent(p => structuredCloneAndSet(p, `tools.${i}.subtitle.en`, v))} textarea /><AdminInput label="Subtitle RU" value={tool.subtitle.ru} onChange={v => setContent(p => structuredCloneAndSet(p, `tools.${i}.subtitle.ru`, v))} textarea /><AdminInput label="Checklist EN (one per line)" value={tool.checklist.en.join("\n")} onChange={v => setContent(p => structuredCloneAndSet(p, `tools.${i}.checklist.en`, v.split("\n")))} textarea /><AdminInput label="Checklist RU (one per line)" value={tool.checklist.ru.join("\n")} onChange={v => setContent(p => structuredCloneAndSet(p, `tools.${i}.checklist.ru`, v.split("\n")))} textarea /><AdminInput label="Poster" value={tool.poster} onChange={v => setContent(p => structuredCloneAndSet(p, `tools.${i}.poster`, v))} /><AdminInput label="Hover showreel" value={tool.showreel} onChange={v => setContent(p => structuredCloneAndSet(p, `tools.${i}.showreel`, v))} /></div>)}</div></AdminSection>; }
-function AdminCollectionPeople({ people, setContent }: { people: Collaborator[]; setContent: React.Dispatch<React.SetStateAction<SiteContent>> }) { return <AdminSection title="Collaborators"><div className="grid gap-3 md:grid-cols-2">{people.map((p, i) => <div key={p.id} className="rounded-xl border border-white/10 p-3"><div className="mb-2 flex justify-between"><b>{p.name.en}</b><button onClick={() => setContent(c => ({ ...c, collaborators: c.collaborators.filter(x => x.id !== p.id) }))}><Trash2 className="h-4 w-4" /></button></div><AdminInput label="Name EN" value={p.name.en} onChange={v => setContent(c => structuredCloneAndSet(c, `collaborators.${i}.name.en`, v))} /><AdminInput label="Name RU" value={p.name.ru} onChange={v => setContent(c => structuredCloneAndSet(c, `collaborators.${i}.name.ru`, v))} /><AdminInput label="Role EN" value={p.role.en} onChange={v => setContent(c => structuredCloneAndSet(c, `collaborators.${i}.role.en`, v))} /><AdminInput label="Role RU" value={p.role.ru} onChange={v => setContent(c => structuredCloneAndSet(c, `collaborators.${i}.role.ru`, v))} /><AdminInput label="Studio/company" value={p.studio} onChange={v => setContent(c => structuredCloneAndSet(c, `collaborators.${i}.studio`, v))} /><AdminInput label="Bio EN" value={p.bio.en} onChange={v => setContent(c => structuredCloneAndSet(c, `collaborators.${i}.bio.en`, v))} textarea /><AdminInput label="Bio RU" value={p.bio.ru} onChange={v => setContent(c => structuredCloneAndSet(c, `collaborators.${i}.bio.ru`, v))} textarea /><AdminInput label="Image/poster" value={p.image} onChange={v => setContent(c => structuredCloneAndSet(c, `collaborators.${i}.image`, v))} /><AdminInput label="Card showreel" value={p.showreel} onChange={v => setContent(c => structuredCloneAndSet(c, `collaborators.${i}.showreel`, v))} /><AdminInput label="Detail video" value={p.detailVideo} onChange={v => setContent(c => structuredCloneAndSet(c, `collaborators.${i}.detailVideo`, v))} /><AdminInput label="Links JSON" value={JSON.stringify(p.links)} onChange={v => { try { const parsed = JSON.parse(v); setContent(c => structuredCloneAndSet(c, `collaborators.${i}.links`, parsed)); } catch {} }} textarea /></div>)}</div></AdminSection>; }
-function AdminCollectionWorks({ works, setContent }: { works: WorkItem[]; setContent: React.Dispatch<React.SetStateAction<SiteContent>> }) { return <AdminSection title="My work — videos"><div className="grid gap-3 md:grid-cols-2">{works.map((w, i) => <div key={w.id} className="rounded-xl border border-white/10 p-3"><div className="mb-2 flex justify-between"><b>{w.title.en}</b><button onClick={() => setContent(c => ({ ...c, works: c.works.filter(x => x.id !== w.id) }))}><Trash2 className="h-4 w-4" /></button></div><AdminInput label="Orientation: landscape / portrait" value={w.orientation} onChange={v => setContent(c => structuredCloneAndSet(c, `works.${i}.orientation`, v === "portrait" ? "portrait" : "landscape"))} /><AdminInput label="Video URL" value={w.video} onChange={v => setContent(c => structuredCloneAndSet(c, `works.${i}.video`, v))} /><AdminInput label="Poster URL" value={w.poster} onChange={v => setContent(c => structuredCloneAndSet(c, `works.${i}.poster`, v))} /><AdminInput label="Client avatar URL" value={w.avatar} onChange={v => setContent(c => structuredCloneAndSet(c, `works.${i}.avatar`, v))} /><AdminInput label="Views (e.g. 1.2M)" value={w.views} onChange={v => setContent(c => structuredCloneAndSet(c, `works.${i}.views`, v))} /><AdminInput label="Client EN" value={w.client.en} onChange={v => setContent(c => structuredCloneAndSet(c, `works.${i}.client.en`, v))} /><AdminInput label="Client RU" value={w.client.ru} onChange={v => setContent(c => structuredCloneAndSet(c, `works.${i}.client.ru`, v))} /><AdminInput label="Title EN" value={w.title.en} onChange={v => setContent(c => structuredCloneAndSet(c, `works.${i}.title.en`, v))} /><AdminInput label="Title RU" value={w.title.ru} onChange={v => setContent(c => structuredCloneAndSet(c, `works.${i}.title.ru`, v))} /><AdminInput label="Description EN" value={w.description.en} onChange={v => setContent(c => structuredCloneAndSet(c, `works.${i}.description.en`, v))} textarea /><AdminInput label="Description RU" value={w.description.ru} onChange={v => setContent(c => structuredCloneAndSet(c, `works.${i}.description.ru`, v))} textarea /></div>)}</div></AdminSection>; }
 
 // Cinematic camera-focus cursor: four AF corner brackets that track the pointer
 // and lock onto interactive elements like a viewfinder focus box. The brackets
@@ -419,11 +722,59 @@ function CustomCursor() {
   </div>;
 }
 
+// Password gate. On success you "enter" the live site in edit mode.
+function LoginGate({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+  const [pw, setPw] = useState(""); const [err, setErr] = useState("");
+  async function submit() { if (await sha256Hex(pw) === adminPasswordHash) onSuccess(); else setErr("Wrong password"); }
+  return <motion.div className="fixed inset-0 z-[96] grid place-items-center bg-black/80 p-4 backdrop-blur-xl" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
+    <motion.div onClick={e => e.stopPropagation()} className="panel w-full max-w-xs rounded-[1.3rem] p-5" initial={{ y: 18, scale: .97, opacity: 0 }} animate={{ y: 0, scale: 1, opacity: 1 }} exit={{ y: 14, scale: .98, opacity: 0 }} transition={{ type: "spring", stiffness: 300, damping: 28 }}>
+      <p className="mb-3 text-sm font-medium text-[#e8e7d5]">Admin login</p>
+      <input autoFocus type="password" value={pw} onChange={e => setPw(e.target.value)} onKeyDown={e => e.key === "Enter" && submit()} placeholder="Password" className="w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2.5 text-sm text-[#e1e0cc] outline-none transition focus:border-[#d89b57]/50 focus:shadow-[0_0_0_3px_rgba(216,155,87,0.12)]" />
+      {err && <p className="mt-2 text-xs text-red-300">{err}</p>}
+      <button onClick={submit} className="mt-3 w-full rounded-full bg-[#e1e0cc] py-2.5 text-sm font-bold text-black transition hover:bg-white active:scale-[.98]">Enter edit mode</button>
+    </motion.div>
+  </motion.div>;
+}
+
 export default function Home() {
-  const [content, setContent] = useSiteContent(); const [lang, setLang] = useLanguage(); const [adminOpen, setAdminOpen] = useState(false);
+  const { content, setContent, sync, setSync } = useSiteContent();
+  const [lang, setLang] = useLanguage();
+  const [editMode, setEditMode] = useState(false);
+  const [loginOpen, setLoginOpen] = useState(false);
   useSmoothScroll();
-  // Use e.code (physical key) so the shortcut works on any keyboard layout —
-  // on a Russian layout e.key for the A key is "ф", which broke the old check.
-  useEffect(() => { const handler = (e: globalThis.KeyboardEvent) => { if (e.ctrlKey && e.altKey && e.code === "KeyA") { e.preventDefault(); setAdminOpen(true); } }; window.addEventListener("keydown", handler); return () => window.removeEventListener("keydown", handler); }, []);
-  return <main className="relative"><CustomCursor /><Header content={content} lang={lang} setLang={setLang} /><Hero content={content} lang={lang} openAdmin={() => setAdminOpen(true)} /><Tools content={content} lang={lang} /><Work content={content} lang={lang} /><Collaborators content={content} lang={lang} /><Contact content={content} lang={lang} /><footer className="container flex flex-wrap items-center justify-between gap-3 border-t border-white/10 py-10 text-sm text-[#e1e0cc]/45"><span>{lang === "ru" ? "© 2026 alex.creates — кинематографичный монтаж и режиссура." : "© 2026 alex.creates — cinematic editing and direction."}</span><span className="mono text-xs tracking-[.2em] text-[#e1e0cc]/35">v0.3</span></footer><AdminPanel open={adminOpen} onClose={() => setAdminOpen(false)} content={content} setContent={setContent} /></main>;
+
+  useEffect(() => { try { if (sessionStorage.getItem("editMode") === "1") setEditMode(true); } catch {} }, []);
+  useEffect(() => { try { sessionStorage.setItem("editMode", editMode ? "1" : "0"); } catch {} }, [editMode]);
+
+  // Ctrl+Alt+A opens the login (e.code so it works on any keyboard layout).
+  useEffect(() => {
+    const handler = (e: globalThis.KeyboardEvent) => { if (e.ctrlKey && e.altKey && e.code === "KeyA") { e.preventDefault(); if (!editMode) setLoginOpen(true); } };
+    window.addEventListener("keydown", handler); return () => window.removeEventListener("keydown", handler);
+  }, [editMode]);
+
+  const update = useCallback((path: string, value: unknown) => setContent(prev => structuredCloneAndSet(prev, path, value)), [setContent]);
+  const upload = useCallback(async (file: File) => {
+    setSync("saving");
+    const fd = new FormData(); fd.append("file", file);
+    const res = await fetch("/api/upload", { method: "POST", body: fd });
+    if (!res.ok) { setSync("error"); throw new Error("upload failed"); }
+    const { url } = await res.json();
+    setSync("idle");
+    return url as string;
+  }, [setSync]);
+
+  const api = useMemo<EditAPI>(() => ({ editMode, setEditMode, setContent, update, upload, sync }), [editMode, setContent, update, upload, sync]);
+
+  return <EditContext.Provider value={api}><main className="relative">
+    <CustomCursor />
+    <Header lang={lang} setLang={setLang} />
+    <Hero content={content} lang={lang} openAdmin={() => { if (!editMode) setLoginOpen(true); }} />
+    <Tools content={content} lang={lang} />
+    <Work content={content} lang={lang} />
+    <Collaborators content={content} lang={lang} />
+    <Contact content={content} lang={lang} />
+    <footer className="container flex flex-wrap items-center justify-between gap-3 border-t border-white/10 py-10 text-sm text-[#e1e0cc]/45"><span>{lang === "ru" ? "© 2026 alex.creates — кинематографичный монтаж и режиссура." : "© 2026 alex.creates — cinematic editing and direction."}</span><span className="mono text-xs tracking-[.2em] text-[#e1e0cc]/35">v0.3</span></footer>
+    <AdminBar />
+    <AnimatePresence>{loginOpen && <LoginGate onClose={() => setLoginOpen(false)} onSuccess={() => { setEditMode(true); setLoginOpen(false); }} />}</AnimatePresence>
+  </main></EditContext.Provider>;
 }
