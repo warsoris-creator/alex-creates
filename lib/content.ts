@@ -2,7 +2,7 @@ export type Lang = "en" | "ru";
 export type Localized = Record<Lang, string>;
 export type ToolCard = {
   id: string;
-  icon: "ae" | "blend" | "brain" | "spark" | "cut";
+  icon: "ae" | "blend" | "brain" | "spark" | "cut" | "weave";
   title: Localized;
   subtitle: Localized;
   checklist: Record<Lang, string[]>;
@@ -100,6 +100,13 @@ export const defaultContent: SiteContent = {
       subtitle: { en: "World-building, lighting and surreal visual inserts.", ru: "Создание миров, свет и сюрреалистичные визуальные вставки." },
       checklist: { en: ["3D modeling, animation, lighting and rendering", "Creating immersive worlds and detailed visual assets", "Bringing ideas to life in three dimensions"], ru: ["3D-моделирование, анимация, свет и рендер", "Иммерсивные миры и детальные визуальные ассеты", "Идеи, оживающие в трёх измерениях"] },
       link: "#contact", poster: "https://images.unsplash.com/photo-1633287389546-54c2a1a4ad49?q=80&w=1000&auto=format&fit=crop", showreel: videoA,
+    },
+    {
+      id: "figma-weave", icon: "weave",
+      title: { en: "Figma Weave.", ru: "Figma Weave." },
+      subtitle: { en: "AI-assisted design and rapid interface prototyping.", ru: "AI-дизайн и быстрое прототипирование интерфейсов." },
+      checklist: { en: ["Turning raw ideas into interfaces and layouts fast", "AI-assisted design systems, mockups and web prototypes", "Bridging visual concepts and production-ready design"], ru: ["Быстрое превращение идей в интерфейсы и макеты", "AI-дизайн-системы, макеты и веб-прототипы", "Мост между визуальной концепцией и готовым дизайном"] },
+      link: "#contact", poster: "https://images.unsplash.com/photo-1561070791-2526d30994b5?q=80&w=1000&auto=format&fit=crop", showreel: videoB,
     },
     {
       id: "neural-networks", icon: "brain",

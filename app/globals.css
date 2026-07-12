@@ -63,10 +63,10 @@ a { text-decoration: none; }
    Only sets the family/style so the per-element Tailwind weight + tracking still win. */
 .display { font-family: var(--font-accent), Georgia, serif; font-style: normal; }
 .accent { font-family: var(--font-accent), Georgia, serif; font-style: italic; font-weight: 600; letter-spacing: -0.035em; }
-/* Russian display uses Unbounded — a bold, distinctive grotesk with strong
-   Cyrillic. The Latin "alex.creates*" wordmark keeps Playfair via .keep-latin. */
-html[lang="ru"] .display:not(.keep-latin) { font-family: var(--font-display-ru), system-ui, sans-serif; letter-spacing: -0.02em; }
-html[lang="ru"] .accent:not(.keep-latin) { font-family: var(--font-display-ru), system-ui, sans-serif; font-style: normal; letter-spacing: -0.02em; }
+/* Russian display uses Cormorant Garamond — a high-contrast cinematic serif with
+   full Cyrillic. The Latin "alex.creates*" wordmark keeps Playfair via .keep-latin. */
+html[lang="ru"] .display:not(.keep-latin) { font-family: var(--font-display-ru), Georgia, serif; letter-spacing: -0.01em; }
+html[lang="ru"] .accent:not(.keep-latin) { font-family: var(--font-display-ru), Georgia, serif; font-style: italic; font-weight: 600; letter-spacing: -0.01em; }
 /* Editorial monospace — eyebrows, labels, version, data. */
 .mono { font-family: var(--font-mono), ui-monospace, monospace; }
 .container { width: min(100% - 40px, 1460px); margin-inline: auto; }

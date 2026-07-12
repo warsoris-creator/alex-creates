@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useMotionValue, useReducedMotion, useScroll, useSpring, useTransform } from "framer-motion";
-import { ArrowUpRight, CircleArrowRight, Pencil, Plus, Trash2, X, Brain, Sparkles, Scissors, Box, Eye, Play, LogOut, Upload, Loader2, Check } from "lucide-react";
+import { ArrowUpRight, CircleArrowRight, Pencil, Plus, Trash2, X, Brain, Sparkles, Scissors, Eye, Play, LogOut, Upload, Loader2, Check } from "lucide-react";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -136,9 +136,15 @@ function WordOpacity({ text }: { text: string }) {
   return <p className="mx-auto mt-8 max-w-3xl text-center text-sm leading-7 text-[rgba(225,224,204,.45)] md:text-base">{words.map((w, i) => <motion.span key={`${w}-${i}`} className="inline-block pr-[.28em]" initial={{ opacity: .22 }} whileInView={{ opacity: .82 }} viewport={{ once: true, amount: .65 }} transition={{ delay: i * .012, duration: .35 }}>{w}</motion.span>)}</p>;
 }
 
+// Public assets live under NEXT_PUBLIC_BASE_PATH in static export; empty on the Node app.
+const assetBase = process.env.NEXT_PUBLIC_BASE_PATH || "";
+const ToolIcon = ({ name, alt }: { name: string; alt: string }) => (
+  <img src={`${assetBase}/icons/${name}.png`} alt={alt} className="h-11 w-11 object-contain" />
+);
 const iconMap = {
-  ae: <span className="flex gap-1"><span className="rounded-md bg-[#3131a8] px-2 py-1 text-lg font-bold text-[#bbb7ff]">Ae</span><span className="rounded-md bg-[#5f2fb0] px-2 py-1 text-lg font-bold text-[#e5c6ff]">Pr</span></span>,
-  blend: <Box className="h-11 w-11 text-[#e68a34]" />,
+  ae: <span className="flex items-center gap-2"><ToolIcon name="ae" alt="After Effects" /><ToolIcon name="pr" alt="Premiere Pro" /></span>,
+  blend: <ToolIcon name="blender" alt="Blender" />,
+  weave: <ToolIcon name="weave" alt="Figma Weave" />,
   brain: <Brain className="h-11 w-11 text-[#7dd9d0]" />,
   spark: <Sparkles className="h-11 w-11 text-[#e1e0cc]" />,
   cut: <Scissors className="h-11 w-11 text-[#d89b57]" />,
